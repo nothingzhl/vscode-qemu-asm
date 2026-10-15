@@ -19,7 +19,7 @@ export class DebugRuntime extends EventEmitter {
   private breakpointStep?: { address: number; step: boolean; pause: boolean; awaiting: boolean };
   private disposal?: Promise<void>;
 
-  constructor(private readonly project: Project, private readonly log: (text: string) => void) { super(); }
+  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) { super(); }
 
   async launch(): Promise<void> {
     if (this.launched || this.stopping) throw new Error('调试运行时不能重复启动');
@@ -29,7 +29,7 @@ export class DebugRuntime extends EventEmitter {
     }
     try {
       const port = await freePort();
-      const args = [...qemuArguments(this.project), '-S', '-gdb', `tcp:127.0.0.1:${port}`];
+      const args = [...qemuArguments(this.project), ...this.extraArgs, '-S', '-gdb', `tcp:127.0.0.1:${port}`];
       const process = this.processes.start(this.project.qemu, args, this.project.root, this.log);
       let processError: Error | undefined;
       void process.done.then(() => {

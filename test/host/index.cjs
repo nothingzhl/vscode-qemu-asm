@@ -123,6 +123,7 @@ async function resources() {
 }
 
 exports.run = async function() {
+  if (process.env.QEMU_ASM_HOST_PHASE === 'display') { await require('./display.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'debug') { await require('./debug.cjs').run(); return; }
   const observed = observeProcesses();
   try {

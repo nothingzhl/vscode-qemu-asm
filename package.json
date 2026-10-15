@@ -1,8 +1,8 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中构建、运行并调试 x86 16 位引导程序，学习寄存器与栈。",
-  "version": "0.1.0",
+  "description": "在 VS Code 中构建与调试 x86 引导程序，查看寄存器、栈和真实 QEMU 模拟显示器。",
+  "version": "0.2.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -24,7 +24,9 @@
     "test": "npm run compile && node --test test/*.test.cjs",
     "test:integration": "npm run compile && node scripts/integration.cjs",
     "test:host": "npm run compile && node scripts/host-test.cjs",
-    "test:debug": "npm run compile && node scripts/debug-runtime-integration.cjs && node scripts/debug-integration.cjs"
+    "test:debug": "npm run compile && node scripts/debug-runtime-integration.cjs && node scripts/debug-integration.cjs",
+    "test:display": "npm run compile && node scripts/display-integration.cjs",
+    "test:display:ui": "npm run compile && node scripts/display-ui-test.cjs"
   },
   "contributes": {
     "commands": [
@@ -51,6 +53,10 @@
       {
         "command": "qemuAsm.debug",
         "title": "QEMU Assembly: 开始实模式调试"
+      },
+      {
+        "command": "qemuAsm.showDisplay",
+        "title": "QEMU Assembly: 显示模拟显示器"
       }
     ],
     "configuration": {
