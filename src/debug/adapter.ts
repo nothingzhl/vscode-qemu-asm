@@ -5,7 +5,8 @@ import * as path from 'node:path';
 import type { DebugAdapter, DebugProtocolMessage, Disposable, Event } from 'vscode';
 import { build, Processes, Project } from '../core';
 import { SourceMap, parseListing } from './listing';
-import { DebugRuntime, realModeAddress, StoppedEvent } from './runtime';
+import { SourceMaps } from './maps';
+import { cpuMode, DebugRuntime, instructionAddress, stackAddress, stackWidth, StoppedEvent } from './runtime';
 
 export interface DebugDisplay { readonly args: string[]; connect(): Promise<void>; dispose(): Promise<void> }
 interface Request { seq: number; command: string; arguments?: Record<string, unknown> }
@@ -13,6 +14,11 @@ export interface AdapterOptions { getProject: () => Promise<Project>; isTrusted:
 interface Frame { id: number; name: string; line: number; column: number; instructionPointerReference: string; source?: { name: string; path: string } }
 const hex = (value: number, digits = 4) => `0x${(value >>> 0).toString(16).toUpperCase().padStart(digits, '0')}`;
 const integer = (value: unknown, fallback: number) => typeof value === 'number' && Number.isSafeInteger(value) ? value : fallback;
+function stackRange(registers: Record<string, number>): { lower: number; upper: number; pointerBytes: 2 | 4 } {
+  const pointerBytes = stackWidth(registers), maximum = pointerBytes === 4 ? 0xffffffff : 0xffff;
+  const expandDown = cpuMode(registers) !== 'real16' && !!((registers.ss_flags ?? 0) & (1 << 10));
+  return { pointerBytes, lower: expandDown ? (registers.ss_limit ?? maximum) + 1 : 0, upper: expandDown ? maximum : Math.min(maximum, registers.ss_limit ?? maximum) };
+}
 
 /** VS Code 内联 DAP 适配器；同样可在 Node 集成测试中驱动，不模拟调试协议。 */
 export class AssemblyDebugAdapter implements DebugAdapter {
@@ -30,6 +36,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
   private runtime?: DebugRuntime;
   private display?: DebugDisplay;
   private map?: SourceMap;
+  private maps?: SourceMaps;
   private sourceKey = '';
   private epoch = 0;
   private phase: 'idle' | 'preparing' | 'configuring' | 'booting' | 'stopped' | 'running' | 'ended' = 'idle';
@@ -85,11 +92,17 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     try {
       const listing = path.join(temp, 'boot.lst');
       this.trust();
-      await build(project, this.processes, text => this.output(text, 'stderr'), () => epoch !== this.epoch, listing);
-      const source = await fs.readFile(project.source, 'utf8');
-      const sourcePath = await fs.realpath(project.source);
-      this.map = parseListing(await fs.readFile(listing, 'utf8'), sourcePath, source);
-      this.sourceKey = await this.fileKey(sourcePath);
+      const result = await build(project, this.processes, text => this.output(text, 'stderr'), () => epoch !== this.epoch, listing);
+      const maps: SourceMap[] = [];
+      for (const unit of result.units) {
+        if (!unit.listingPath) throw new Error('构建未生成调试 listing');
+        const source = await fs.readFile(unit.source, 'utf8');
+        const sourcePath = await fs.realpath(unit.source);
+        maps.push(parseListing(await fs.readFile(unit.listingPath, 'utf8'), sourcePath, source, { loadAddress: unit.loadAddress, maxBytes: unit.size, initialBits: maps.length === 0 ? 16 : 'auto' }));
+      }
+      this.maps = new SourceMaps(maps);
+      this.map = maps[0];
+      this.sourceKey = await this.fileKey(this.map.sourcePath);
     } finally { await fs.rm(temp, { recursive: true, force: true }); }
     this.trust();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
@@ -115,13 +128,20 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     await display?.connect();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.phase = 'configuring';
-    this.output('16 位实模式调试已就绪。暂停后可查看寄存器、SS:SP 栈内存和 BP 栈帧链。\n');
+    this.output('16/32 位引导调试已就绪。支持实模式到无分页保护模式的切换，以及寄存器、栈内存和 BP/EBP 栈帧链。\n');
   }
 
+  private sourceMap(file: string): SourceMap | undefined { return this.maps?.forSource(file) ?? (file === this.sourceKey ? this.map : undefined); }
+  private locate(address: number, bits?: 16 | 32): { map: SourceMap; entry: SourceMap['entries'][number] } | undefined {
+    const entry = this.map?.forAddress(address);
+    const located = this.maps?.forAddress(address) ?? (entry && this.map ? { map: this.map, entry } : undefined);
+    return located && (bits === undefined || (located.entry.bits ?? 16) === bits) ? located : undefined;
+  }
   private addresses(): number[] {
-    if (!this.map) return [];
-    const lines = this.userLines.get(this.sourceKey) ?? [];
-    return [...new Set(lines.flatMap(line => { const entry = this.map?.forLine(line); return entry ? [entry.address] : []; }))];
+    return [...new Set([...this.userLines].flatMap(([file, lines]) => {
+      const map = this.sourceMap(file);
+      return lines.flatMap(line => { const entry = map?.forLine(line); return entry ? [entry.address] : []; });
+    }))];
   }
   private async installBreakpoints(): Promise<void> {
     await this.runtime?.setBreakpoints([...new Set([...this.userAddresses, ...(this.temporary === undefined ? [] : [this.temporary])])]);
@@ -137,14 +157,16 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const temporary = this.temporary;
     this.phase = 'stopped';
     const registers = await this.runtime.registers();
-    const pc = realModeAddress(registers);
+    const mode = cpuMode(registers), bits = mode === 'protected32' ? 32 : 16;
+    const pc = instructionAddress(registers);
     if (temporary !== undefined) { this.temporary = undefined; await this.installBreakpoints(); }
     if (booting && (!this.map || pc !== this.map.origin)) throw new Error(`未能停在引导入口，实际地址 ${hex(pc)}`);
     if (booting && !this.stopOnEntry && !this.userAddresses.includes(pc)) { await this.continue(false); return; }
     const reason = booting ? 'entry' : temporary === pc ? 'step' : event.reason;
-    const source = this.map?.forAddress(pc);
-    this.output(`[暂停 ${reason}] ${hex(registers.cs)}:${hex(registers.eip & 0xffff)} → ${hex(pc)}${source ? ` 第 ${source.line} 行：${source.text.trim()}` : '（当前地址不在引导源码中）'}\n`);
-    this.event('stopped', { reason, threadId: 1, allThreadsStopped: true, description: `${hex(registers.cs)}:${hex(registers.eip & 0xffff)} → ${hex(pc)}` });
+    const source = this.locate(pc, bits);
+    const location = `${mode} ${hex(registers.cs)}:${hex(mode === 'real16' ? registers.eip & 0xffff : registers.eip, mode === 'real16' ? 4 : 8)} → ${hex(pc)}`;
+    this.output(`[暂停 ${reason}] ${location}${source ? ` ${path.basename(source.map.sourcePath)} 第 ${source.entry.line} 行：${source.entry.text.trim()}` : '（当前地址无匹配代码模式的源码）'}\n`);
+    this.event('stopped', { reason, threadId: 1, allThreadsStopped: true, description: location });
     this.event('invalidated', { areas: ['stacks', 'variables'] });
   }
   private async continue(step: boolean): Promise<void> {
@@ -156,26 +178,32 @@ export class AssemblyDebugAdapter implements DebugAdapter {
   private async frames(): Promise<Frame[]> {
     const runtime = this.requireStopped();
     const registers = await runtime.registers();
+    const bits = cpuMode(registers) === 'protected32' ? 32 : 16;
+    const word = bits / 8;
+    const { pointerBytes, lower, upper } = stackRange(registers);
+    const maxSlot = upper - word * 2 + 1;
     const frames: Frame[] = [];
     const add = (address: number, name: string) => {
-      const entry = this.map?.forAddress(address);
-      frames.push({ id: frames.length + 1, name: `${name} ${hex(address)}`, line: entry?.line ?? 1, column: 1, instructionPointerReference: hex(address), ...(entry && this.map ? { source: { name: path.basename(this.map.sourcePath), path: this.map.sourcePath } } : {}) });
+      const located = this.locate(address, bits);
+      frames.push({ id: frames.length + 1, name: `${name} ${hex(address)}`, line: located?.entry.line ?? 1, column: 1, instructionPointerReference: hex(address), ...(located ? { source: { name: path.basename(located.map.sourcePath), path: located.map.sourcePath } } : {}) });
     };
-    add(realModeAddress(registers), '当前指令');
-    let bp = registers.ebp & 0xffff;
-    const sp = registers.esp & 0xffff;
-    const segment = (registers.ss & 0xffff) * 16;
-    for (let count = 0; count < 15 && bp >= sp && bp > 0 && bp <= 0xfffc; count++) {
-      const words = await runtime.readMemory(segment + bp, 4);
-      const previous = words.readUInt16LE(0);
-      const returnAddress = (registers.cs & 0xffff) * 16 + words.readUInt16LE(2);
-      const returnEntry = this.map?.forAddress(returnAddress);
-      if (!returnEntry || returnEntry.address !== returnAddress || (previous !== 0 && (previous <= bp || previous > 0xfffc))) break;
-      const call = this.map?.entries.find(entry => entry.address + entry.size === returnAddress);
+    add(instructionAddress(registers), '当前指令');
+    let bp = pointerBytes === 4 ? registers.ebp >>> 0 : registers.ebp & 0xffff;
+    const sp = pointerBytes === 4 ? registers.esp >>> 0 : registers.esp & 0xffff;
+    for (let count = 0; count < 15 && sp >= lower && bp >= sp && bp >= lower && bp > 0 && bp <= maxSlot; count++) {
+      const address = stackAddress(registers, bp);
+      if (address + word * 2 > 0x100000000) break;
+      const words = await runtime.readMemory(address, word * 2);
+      const previous = word === 4 ? words.readUInt32LE(0) : words.readUInt16LE(0);
+      const returnOffset = word === 4 ? words.readUInt32LE(word) : words.readUInt16LE(word);
+      const returnAddress = ((registers.cs_base ?? (registers.cs & 0xffff) * 16) + returnOffset) >>> 0;
+      const located = this.locate(returnAddress, bits);
+      if (!located || located.entry.address !== returnAddress || (previous !== 0 && (previous <= bp || previous < lower || previous > maxSlot))) break;
+      const call = located.map.entries.find(entry => entry.address + entry.size === returnAddress && (entry.bits ?? 16) === bits);
       if (!call) break;
       const opcode = await runtime.readMemory(call.address, Math.min(call.size, 2));
       if (opcode[0] !== 0xe8 && !(opcode[0] === 0xff && ((opcode[1] >> 3) & 7) === 2)) break;
-      add(returnAddress, '调用者（BP 链）');
+      add(returnAddress, bits === 32 ? '调用者（EBP 链）' : '调用者（BP 链）');
       if (previous === 0) break;
       bp = previous;
     }
@@ -187,17 +215,20 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     if (reference === 1) {
       const aliases: Record<string, number> = {};
       for (const [short, full] of [['ax','eax'],['bx','ebx'],['cx','ecx'],['dx','edx'],['si','esi'],['di','edi'],['bp','ebp'],['sp','esp'],['ip','eip']]) aliases[short] = r[full] & 0xffff;
-      return Object.entries({ ...aliases, ...r }).map(([name, value]) => ({ name: name.toUpperCase(), value: hex(value, name.startsWith('e') || name === 'cr0' ? 8 : 4), type: '寄存器', variablesReference: name === 'eflags' ? 4 : 0, evaluateName: name, presentationHint: { attributes: ['readOnly'] } }));
+      return Object.entries({ ...aliases, ...r }).map(([name, value]) => ({ name: name.toUpperCase(), value: hex(value, /^(?:e|cr)|_(?:base|limit|flags)$/.test(name) ? 8 : 4), type: '寄存器', variablesReference: name === 'eflags' ? 4 : 0, evaluateName: name, presentationHint: { attributes: ['readOnly'] } }));
     }
     if (reference === 4) return [['CF',0],['PF',2],['AF',4],['ZF',6],['SF',7],['TF',8],['IF',9],['DF',10],['OF',11]].map(([name, bit]) => ({ name: String(name), value: String((r.eflags >>> Number(bit)) & 1), variablesReference: 0, type: '标志位' }));
     if (reference === 2) {
-      const sp = r.esp & 0xffff, ss = r.ss & 0xffff, address = ss * 16 + sp;
-      const bytes = await runtime.readMemory(address, Math.min(32, 0x10000 - sp));
+      const width = cpuMode(r) === 'protected32' ? 4 : 2;
+      const { pointerBytes: pointer, lower, upper } = stackRange(r);
+      const sp = pointer === 4 ? r.esp >>> 0 : r.esp & 0xffff, ss = r.ss & 0xffff, address = stackAddress(r);
+      const bytes = sp >= lower && sp <= upper ? await runtime.readMemory(address, Math.min(16 * width, upper - sp + 1, 0x100000000 - address)) : Buffer.alloc(0);
       const variables = [];
-      for (let offset = 0; offset + 1 < bytes.length; offset += 2) variables.push({ name: `${hex(ss)}:${hex(sp + offset)}${offset === 0 ? ' ← SP' : ''}`, value: hex(bytes.readUInt16LE(offset)), type: 'uint16（小端）', variablesReference: 0, memoryReference: hex(address + offset), presentationHint: { attributes: ['readOnly'] } });
+      for (let offset = 0; offset + width <= bytes.length; offset += width) variables.push({ name: `${hex(ss)}:${hex(sp + offset, pointer * 2)}${offset === 0 ? pointer === 4 ? ' ← ESP' : ' ← SP' : ''}`, value: hex(width === 4 ? bytes.readUInt32LE(offset) : bytes.readUInt16LE(offset), width * 2), type: `uint${width * 8}（小端）`, variablesReference: 0, memoryReference: hex(address + offset), presentationHint: { attributes: ['readOnly'] } });
       return variables;
     }
-    if (reference === 3) return [{ name: '说明', value: '调用者来自 BP 栈帧链，未保存历史寄存器快照；寄存器和栈内存属于当前暂停的 CPU。', variablesReference: 0 }];
+    if (reference === 3) return [{ name: '说明', value: '调用者来自 BP/EBP 栈帧链，未保存历史寄存器快照；寄存器和栈内存属于当前暂停的 CPU。', variablesReference: 0 }];
+    if (reference === 5) return Object.entries({ MODE: cpuMode(r), '代码位数': cpuMode(r) === 'protected32' ? '32' : '16', '栈指针位数': String(stackWidth(r) * 8), '指令线性地址': hex(instructionAddress(r)), '栈线性地址': hex(stackAddress(r)), 'CR0.PE': String((r.cr0 ?? 0) & 1), 'CR0.PG': String((r.cr0 ?? 0) >>> 31) }).map(([name, value]) => ({ name, value, variablesReference: 0, presentationHint: { attributes: ['readOnly'] } }));
     return [];
   }
 
@@ -209,7 +240,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       case 'launch':
         await this.prepare(args); this.response(request); this.event('initialized'); return;
       case 'configurationDone': await this.boot(); this.response(request); return;
-      case 'threads': this.response(request, { threads: [{ id: 1, name: 'CPU 0（16 位实模式）' }] }); return;
+      case 'threads': this.response(request, { threads: [{ id: 1, name: 'CPU 0（x86 16/32 位）' }] }); return;
       case 'setBreakpoints': {
         this.trust();
         const source = args.source as { path?: string } | undefined;
@@ -227,8 +258,8 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         }
         if (this.runtime && this.phase !== 'preparing') await this.installBreakpoints();
         this.response(request, { breakpoints: breakpoints.map(b => {
-          const entry = !b.condition && !b.hitCondition && !b.logMessage && this.map && file === this.sourceKey ? this.map.forLine(integer(b.line, 0)) : undefined;
-          return { verified: !!entry, line: b.line, ...(entry ? { instructionReference: hex(entry.address) } : { message: '仅支持当前单文件内可执行指令行的普通断点；标签、数据和条件断点不支持。' }) };
+          const entry = !b.condition && !b.hitCondition && !b.logMessage ? this.sourceMap(file)?.forLine(integer(b.line, 0)) : undefined;
+          return { verified: !!entry, line: b.line, ...(entry ? { instructionReference: hex(entry.address) } : { message: '仅支持项目已配置阶段中可执行指令行的普通断点；标签、数据和条件断点不支持。' }) };
         }) });
         if (wasRunning) {
           const natural = this.internalStop as StoppedEvent | undefined;
@@ -239,18 +270,25 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         return;
       }
       case 'stackTrace': {
+        // VS Code can queue a previous stop's stack refresh behind continue or
+        // restart. The old frames have expired; never read a running CPU for it.
+        this.trust();
+        if (this.phase !== 'stopped') { this.response(request, { stackFrames: [], totalFrames: 0 }); return; }
         const all = await this.frames(), start = Math.max(0, integer(args.startFrame, 0)), levels = integer(args.levels, all.length) || all.length;
         this.response(request, { stackFrames: all.slice(start, start + levels), totalFrames: all.length }); return;
       }
       case 'scopes':
-        this.requireStopped();
-        this.response(request, { scopes: integer(args.frameId, 1) === 1 ? [{ name: '寄存器', variablesReference: 1, expensive: false }, { name: '栈内存 SS:SP', variablesReference: 2, expensive: false }] : [{ name: '调用者信息', variablesReference: 3, expensive: false }] }); return;
-      case 'variables': this.response(request, { variables: await this.variables(integer(args.variablesReference, 0)) }); return;
+        this.trust();
+        if (this.phase !== 'stopped') { this.response(request, { scopes: [] }); return; }
+        this.response(request, { scopes: integer(args.frameId, 1) === 1 ? [{ name: '寄存器', variablesReference: 1, expensive: false }, { name: '栈内存 SS:SP / SS:ESP', variablesReference: 2, expensive: false }, { name: 'CPU 模式与地址', variablesReference: 5, expensive: false }] : [{ name: '调用者信息', variablesReference: 3, expensive: false }] }); return;
+      case 'variables':
+        this.trust();
+        this.response(request, { variables: this.phase === 'stopped' ? await this.variables(integer(args.variablesReference, 0)) : [] }); return;
       case 'continue': await this.continue(false); this.response(request, { allThreadsContinued: true }); return;
       case 'stepIn': await this.continue(true); this.response(request); return;
       case 'next': {
-        const runtime = this.requireStopped(); const registers = await runtime.registers(); const address = realModeAddress(registers);
-        const entry = this.map?.forAddress(address); const bytes = await runtime.readMemory(address, entry?.size ?? 1);
+        const runtime = this.requireStopped(); const registers = await runtime.registers(); const address = instructionAddress(registers);
+        const entry = this.locate(address, cpuMode(registers) === 'protected32' ? 32 : 16)?.entry; const bytes = await runtime.readMemory(address, entry?.size ?? 1);
         let opcode = 0;
         while ([0x26,0x2e,0x36,0x3e,0x64,0x65,0x66,0x67,0xf0,0xf2,0xf3].includes(bytes[opcode]) && opcode < bytes.length - 1) opcode++;
         const call = [0xe8,0x9a,0xcd].includes(bytes[opcode]) || (bytes[opcode] === 0xff && [2,3].includes((bytes[opcode + 1] >> 3) & 7));
@@ -270,17 +308,21 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         this.response(request, { address: hex(address), data: data.toString('base64') }); return;
       }
       case 'evaluate': {
+        this.trust();
+        if (this.phase !== 'stopped') { this.response(request, { result: 'CPU 未暂停；暂停后更新', variablesReference: 0 }); return; }
         if (integer(args.frameId, 1) !== 1) throw new Error('调用者没有历史寄存器快照，请选择当前指令栈帧查看');
         const runtime = this.requireStopped(); const r = await runtime.registers(); const expression = String(args.expression ?? '').trim().replace(/^\$/, '').toLowerCase();
         let value: number;
         const aliases: Record<string, string> = { ax:'eax', bx:'ebx', cx:'ecx', dx:'edx', si:'esi', di:'edi', bp:'ebp', sp:'esp', ip:'eip', flags:'eflags' };
-        if (expression === 'cs:ip') value = realModeAddress(r);
-        else if (expression === 'ss:sp') value = (r.ss & 0xffff) * 16 + (r.esp & 0xffff);
+        if (expression === 'mode') { this.response(request, { result: cpuMode(r), variablesReference: 0 }); return; }
+        if (expression === 'cs:ip' || expression === 'cs:eip') value = instructionAddress(r);
+        else if (expression === 'ss:sp' || expression === 'ss:esp') value = stackAddress(r);
+        else if (/^dword\[(?:0x[0-9a-f]+|\d+)\]$/.test(expression)) value = (await runtime.readMemory(this.address(expression.slice(6, -1)), 4)).readUInt32LE(0);
         else if (/^\[(?:0x[0-9a-f]+|\d+)\]$/.test(expression)) value = (await runtime.readMemory(this.address(expression.slice(1, -1)), 2)).readUInt16LE(0);
         else if (expression in aliases) value = r[aliases[expression]] & 0xffff;
         else if (Object.prototype.hasOwnProperty.call(r, expression)) value = r[expression];
-        else throw new Error('可查看寄存器（如 AX、EIP）、CS:IP、SS:SP 或 [0x地址] 的 16 位内存值');
-        this.response(request, { result: hex(value), variablesReference: 0, memoryReference: ['ss:sp','cs:ip'].includes(expression) ? hex(value) : undefined }); return;
+        else throw new Error('可查看寄存器、MODE、CS:EIP、SS:ESP、[0x地址] 的 16 位值或 dword[0x地址] 的 32 位值');
+        this.response(request, { result: hex(value), variablesReference: 0, memoryReference: ['ss:sp','ss:esp','cs:ip','cs:eip'].includes(expression) ? hex(value) : undefined }); return;
       }
       case 'restart':
         if (this.ended) { await this.finish(); throw new Error('调试会话已结束，请重新启动调试'); }

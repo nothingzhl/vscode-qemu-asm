@@ -72,7 +72,7 @@ export class DebugRuntime extends EventEmitter {
       });
       await this.client.command('qSupported:multiprocess+;qXfer:features:read+;xmlRegisters=i386');
       const target = await this.readTarget('target.xml');
-      if (!/<architecture>\s*i386\s*<\/architecture>/.test(target)) throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局与 16 位实模式');
+      if (!/<architecture>\s*i386\s*<\/architecture>/.test(target)) throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局，不支持 64 位 CPU');
       this.layout = registerLayout(target);
       const names = new Set(this.layout.map(register => register.name));
       for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
@@ -104,7 +104,7 @@ export class DebugRuntime extends EventEmitter {
   async resume(step = false): Promise<void> {
     const client = this.requireStopped();
     const registers = await this.registers();
-    const address = realModeAddress(registers);
+    const address = instructionAddress(registers);
     this.nextStop = step ? 'step' : 'breakpoint';
     if (this.breakpoints.has(address)) {
       // QEMU 的 Z1 在 c 后会原地再次触发，先临时移除并完成一条指令。
@@ -144,7 +144,7 @@ export class DebugRuntime extends EventEmitter {
     const registers = decodeRegisters(await client.command('g'), this.layout);
     const monitor = await client.command(`qRcmd,${Buffer.from('info registers').toString('hex')}`);
     Object.assign(registers, monitorRegisters(monitor));
-    validateRealModeRegisters(registers);
+    cpuMode(registers);
     return registers;
   }
 
@@ -240,17 +240,65 @@ export function realModeAddress(registers: Record<string, number>): number {
   return ((registers.cs_base ?? (registers.cs & 0xffff) * 16) + (registers.eip & 0xffff)) >>> 0;
 }
 
-/** monitor 补充 g 包未描述的段缓存，避免把 unreal/big-real 模式显示成普通实模式。 */
+export type CpuMode = 'real16' | 'protected16' | 'protected32';
+
+/** CR0.PE 改变后仍使用实际 CS 缓存；远跳转加载 CS.D 后才切换到 32 位指令。 */
+export function cpuMode(registers: Record<string, number>): CpuMode {
+  if (registers.smm) throw new Error('当前调试不支持系统管理模式（SMM）');
+  if (registers.eflags !== undefined && registers.eflags & (1 << 17)) throw new Error('当前调试不支持虚拟 8086 模式');
+  if (registers.efer !== undefined && registers.efer & (1 << 10)) throw new Error('当前调试不支持 64 位长模式（EFER.LMA）');
+  if (registers.cr0 !== undefined && registers.cr0 & 0x80000000) throw new Error('当前调试不支持分页（CR0.PG=1），请在关闭分页时调试');
+  if (!((registers.cr0 ?? 0) & 1)) {
+    validateRealModeRegisters(registers);
+    return 'real16';
+  }
+  const flags = registers.cs_flags;
+  if (!Number.isInteger(flags) || !Number.isInteger(registers.cs_base) || !Number.isInteger(registers.cs_limit)) throw new Error('缺少保护模式 CS 段缓存，无法安全定位指令');
+  if (flags & (1 << 21)) throw new Error('当前调试不支持 64 位代码段（CS.L）');
+  // QEMU 的段缓存 flags 中，access byte 位于第 8 到 15 位。
+  if ((flags & 0x9800) !== 0x9800) throw new Error('CS 必须是已存在的可执行代码段（P/S/Executable）');
+  return flags & (1 << 22) ? 'protected32' : 'protected16';
+}
+
+/** 保护模式使用完整 EIP；CS.D 只决定默认操作数宽度，不限制指令地址到 64 KiB。 */
+export function instructionAddress(registers: Record<string, number>): number {
+  if (!Number.isInteger(registers.cs) || !Number.isInteger(registers.eip)) throw new Error('缺少 CS/EIP 寄存器');
+  const mode = cpuMode(registers);
+  const offset = mode === 'real16' ? registers.eip & 0xffff : registers.eip >>> 0;
+  return ((registers.cs_base ?? (registers.cs & 0xffff) * 16) + offset) >>> 0;
+}
+
+/** 栈地址宽度以 SS.B 判断，不能用 CS.D 推断刚进入保护模式时的栈宽。 */
+export function stackWidth(registers: Record<string, number>): 2 | 4 {
+  const mode = cpuMode(registers);
+  if (mode === 'real16') return 2;
+  if (!Number.isInteger(registers.ss_flags) || !Number.isInteger(registers.ss_base)) throw new Error('缺少保护模式 SS 段缓存，无法安全定位栈');
+  return registers.ss_flags & (1 << 22) ? 4 : 2;
+}
+
+/** offset 可指定 BP/ESP 链中的栈偏移，仍按当前 SS 的地址宽度回绕。 */
+export function stackAddress(registers: Record<string, number>, offset = registers.esp): number {
+  if (!Number.isInteger(registers.ss) || !Number.isInteger(offset)) throw new Error('缺少 SS/ESP 寄存器');
+  const width = stackWidth(registers);
+  const pointer = width === 4 ? offset >>> 0 : offset & 0xffff;
+  return ((registers.ss_base ?? (registers.ss & 0xffff) * 16) + pointer) >>> 0;
+}
+
+/** monitor 补充 g 包未描述的控制寄存器与段缓存。 */
 export function monitorRegisters(text: string): Record<string, number> {
   const values: Record<string, number> = {};
   const cr0 = /\bCR0=([0-9a-f]+)/i.exec(text);
-  if (!cr0) throw new Error('无法读取 CR0，不能确认 CPU 是否处于实模式');
+  if (!cr0) throw new Error('无法读取 CR0，不能确认 CPU 执行模式');
   values.cr0 = parseInt(cr0[1], 16);
+  for (const name of ['cr2', 'cr3', 'cr4', 'efer']) {
+    const value = new RegExp(`\\b${name}=([0-9a-f]+)`, 'i').exec(text);
+    if (value) values[name] = parseInt(value[1], 16);
+  }
   const smm = /\bSMM=(\d+)/.exec(text);
   if (smm) values.smm = Number(smm[1]);
   for (const name of ['cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
     const segment = new RegExp(`^${name.toUpperCase()}\\s*=([0-9a-f]+)\\s+([0-9a-f]+)\\s+([0-9a-f]+)\\s+([0-9a-f]+)`, 'im').exec(text);
-    if (!segment) throw new Error(`无法读取 ${name.toUpperCase()} 段缓存，不能安全定位实模式地址`);
+    if (!segment) throw new Error(`无法读取 ${name.toUpperCase()} 段缓存，不能安全定位调试地址`);
     values[name] = parseInt(segment[1], 16);
     values[`${name}_base`] = parseInt(segment[2], 16);
     values[`${name}_limit`] = parseInt(segment[3], 16);

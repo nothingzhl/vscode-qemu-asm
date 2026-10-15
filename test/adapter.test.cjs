@@ -17,9 +17,18 @@ test('disposing during project selection cancels launch and sends no initialized
  const response=await pending; assert.equal(response.success,false); assert.match(response.message,/取消/);
  assert.equal(c.messages.some(m=>m.event==='initialized'),false);
 });
-test('debug capabilities are explicit and register access is refused while not paused',async()=>{
+test('debug capabilities are explicit and unpaused refreshes expose no register data',async()=>{
  const c=client({isTrusted:()=>true,getProject:async()=>{throw new Error('unused');}});
  const initialize=await c.request('initialize');assert(initialize.body.supportsReadMemoryRequest);assert.equal(initialize.body.supportsSetVariable,false);
- const response=await c.request('variables',{variablesReference:1}); assert.equal(response.success,false); assert.match(response.message,/暂停/);
+ const response=await c.request('variables',{variablesReference:1}); assert.equal(response.success,true); assert.deepEqual(response.body.variables,[]);
+ const memory=await c.request('readMemory',{memoryReference:'0x7c00',count:4}); assert.equal(memory.success,false); assert.match(memory.message,/暂停/);
+ await c.adapter.dispose();
+});
+
+test('stale UI refreshes still reject an untrusted workspace',async()=>{
+ const c=client({isTrusted:()=>false,getProject:async()=>{throw new Error('unused');}});
+ for(const command of ['stackTrace','scopes','variables','evaluate']){
+  const response=await c.request(command);assert.equal(response.success,false);assert.match(response.message,/信任/);
+ }
  await c.adapter.dispose();
 });

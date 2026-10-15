@@ -1,8 +1,8 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中构建与调试 x86 引导程序，查看寄存器、栈和真实 QEMU 模拟显示器。",
-  "version": "0.2.0",
+  "description": "在 VS Code 中构建与调试 x86 二阶段引导和 32 位保护模式程序，查看寄存器、栈和真实 QEMU 模拟显示器。",
+  "version": "0.3.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -26,7 +26,10 @@
     "test:host": "npm run compile && node scripts/host-test.cjs",
     "test:debug": "npm run compile && node scripts/debug-runtime-integration.cjs && node scripts/debug-integration.cjs",
     "test:display": "npm run compile && node scripts/display-integration.cjs",
-    "test:display:ui": "npm run compile && node scripts/display-ui-test.cjs"
+    "test:display:ui": "npm run compile && node scripts/display-ui-test.cjs",
+    "test:stage": "npm run compile && node scripts/stage-build-integration.cjs",
+    "test:protected": "npm run compile && node scripts/protected-integration.cjs",
+    "test:protected:ui": "npm run compile && node scripts/protected-ui-test.cjs"
   },
   "contributes": {
     "commands": [
@@ -37,6 +40,10 @@
       {
         "command": "qemuAsm.createProject",
         "title": "QEMU Assembly: 创建引导项目"
+      },
+      {
+        "command": "qemuAsm.createProtectedProject",
+        "title": "QEMU Assembly: 创建二阶段保护模式项目"
       },
       {
         "command": "qemuAsm.build",
@@ -52,7 +59,7 @@
       },
       {
         "command": "qemuAsm.debug",
-        "title": "QEMU Assembly: 开始实模式调试"
+        "title": "QEMU Assembly: 开始引导调试"
       },
       {
         "command": "qemuAsm.showDisplay",
@@ -110,7 +117,7 @@
     "debuggers": [
       {
         "type": "qemu-asm",
-        "label": "QEMU 16 位引导调试",
+        "label": "QEMU 16/32 位引导调试",
         "languages": [
           "qemu-asm"
         ],
@@ -121,7 +128,7 @@
               "stopOnEntry": {
                 "type": "boolean",
                 "default": true,
-                "description": "引导到0x7c00后暂停。仅支持BITS 16、ORG 0x7c00的单文件512字节引导程序。"
+                "description": "引导到 0x7c00 后暂停；支持 NASM 实模式引导和未分页的 32 位保护模式二阶段程序。"
               }
             }
           }
@@ -130,18 +137,18 @@
           {
             "type": "qemu-asm",
             "request": "launch",
-            "name": "操作系统学习：16 位引导调试",
+            "name": "操作系统学习：16/32 位引导调试",
             "stopOnEntry": true
           }
         ],
         "configurationSnippets": [
           {
-            "label": "QEMU 16 位引导调试",
-            "description": "构建并调试所选工作区的引导程序",
+            "label": "QEMU 16/32 位引导调试",
+            "description": "构建并调试所选工作区的引导与二阶段程序",
             "body": {
               "type": "qemu-asm",
               "request": "launch",
-              "name": "操作系统学习：16 位引导调试",
+              "name": "操作系统学习：16/32 位引导调试",
               "stopOnEntry": true
             }
           }

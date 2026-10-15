@@ -31,8 +31,11 @@ async function main() {
   const extensionRoot = path.resolve(__dirname, '..');
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qemu asm host, '));
   try {
+    const supportedPhases = ['trusted', 'untrusted', 'resources', 'debug', 'display', 'protected'];
+    const phases = process.env.QEMU_ASM_HOST_PHASES === undefined ? supportedPhases : process.env.QEMU_ASM_HOST_PHASES.split(',').map(phase => phase.trim()).filter(Boolean);
+    if (!phases.length || phases.some(phase => !supportedPhases.includes(phase))) throw new Error(`QEMU_ASM_HOST_PHASES must name one or more phases: ${supportedPhases.join(', ')}`);
     const executable = process.env.VSCODE_EXECUTABLE_PATH || await downloadAndUnzipVSCode(process.env.VSCODE_VERSION || 'stable');
-    for (const phase of ['trusted', 'untrusted', 'resources', 'debug', 'display']) {
+    for (const phase of phases) {
       const root = path.join(temporary, phase, 'workspace with spaces, and commas');
       const other = path.join(temporary, phase, 'other workspace');
       const profile = path.join(temporary, phase, 'profile');
@@ -66,7 +69,7 @@ async function main() {
         launchArgs
       });
     }
-    console.log('\nPASS: real VS Code host trust, resource settings, NASM/QEMU lifecycle and diagnostics');
+    console.log(`\nPASS: real VS Code host phases: ${phases.join(', ')}`);
   } finally {
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }

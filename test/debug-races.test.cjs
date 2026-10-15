@@ -76,6 +76,7 @@ async function configured(t) {
   // source-map parsing, DAP requests and the adapter's queue execute unchanged.
   t.mock.method(core, 'build', async (_project, _processes, _log, _cancelled, listingPath) => {
     await fs.writeFile(listingPath, listing);
+    return { units: [{ source: fixture, loadAddress: 0x7c00, lba: 0, size: 512, listingPath }], imageBytes: 512 };
   });
   t.mock.method(runtimeModule, 'DebugRuntime', function () { return runtime; });
   const c = client(t, { getProject: async () => ({ source: fixture }) });
@@ -182,6 +183,26 @@ test('an ordinary internal pause updates breakpoints and resumes without a user-
   assert.equal(c.runtime.resumes, resumed + 1);
   assert.equal(c.runtime.running, true);
   assert.equal(c.messages.slice(baseline).some(message => message.event === 'stopped' || message.event === 'terminated'), false);
+});
+
+test('a stale stack refresh queued behind continue returns no expired frames or register reads', async t => {
+  const c = await configured(t);
+  assert.equal((await c.request('continue')).success, true);
+  const resumes = c.runtime.resumes;
+  const result = await c.request('stackTrace', { threadId: 1 });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.body, { stackFrames: [], totalFrames: 0 });
+  const scopes = await c.request('scopes', { frameId: 1 });
+  assert.equal(scopes.success, true);
+  assert.deepEqual(scopes.body.scopes, []);
+  const variables = await c.request('variables', { variablesReference: 1 });
+  assert.equal(variables.success, true);
+  assert.deepEqual(variables.body.variables, []);
+  const watch = await c.request('evaluate', { expression: 'eax', context: 'watch' });
+  assert.equal(watch.success, true);
+  assert.match(watch.body.result, /未暂停/);
+  assert.equal(c.runtime.resumes, resumes);
+  assert.equal(c.runtime.running, true);
 });
 
 function stackRuntime(returnAddress, previousBP, opcode) {
