@@ -1,9 +1,44 @@
-import { Decoder, DecoderOptions, Formatter, FormatterSyntax } from 'iced-x86';
+import type { Decoder, Formatter } from 'iced-x86';
+import type { CapabilityLedger } from '../dependencies/capabilities';
 import { CpuMode, cpuMode, instructionAddress } from './runtime';
 
 const ADDRESS_SPACE = 0x100000000;
 const MAX_BYTES = 4096;
 const MAX_INSTRUCTIONS = 256;
+
+type DecoderModule = typeof import('iced-x86');
+let decoderModule: DecoderModule | undefined;
+let decoderFailure: DecoderDependencyError | undefined;
+
+/** Optional decoder failures must not prevent loading the extension or its other features. */
+export class DecoderDependencyError extends Error {
+  readonly dependency = 'iced-x86';
+  constructor(cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`x86 解码器不可用（iced-x86）：${reason}。请重新安装完整 VSIX；反汇编及 NASM 无源码映射处的 F10 暂不可用，可用 F11 执行指令单步。`, { cause });
+    this.name = 'DecoderDependencyError';
+  }
+}
+
+function unavailableDecoder(error: unknown): DecoderDependencyError {
+  decoderFailure ??= new DecoderDependencyError(error);
+  return decoderFailure;
+}
+
+function loadDecoder(): DecoderModule {
+  if (decoderFailure) throw decoderFailure;
+  if (!decoderModule) {
+    try {
+      // iced-x86 loads its WASM synchronously. Keep that work behind the first
+      // actual decoding request instead of making extension activation depend on it.
+      const module = require('iced-x86') as DecoderModule;
+      if (typeof module.Decoder !== 'function' || typeof module.Formatter !== 'function'
+        || !module.DecoderOptions || !module.FormatterSyntax) throw new Error('解码器模块缺少所需接口');
+      decoderModule = module;
+    } catch (error) { throw unavailableDecoder(error); }
+  }
+  return decoderModule;
+}
 
 export interface DecodedInstruction {
   address: number;
@@ -33,6 +68,8 @@ export interface DisassemblyResult {
 export interface DisassemblyRuntime {
   registers(): Promise<Record<string, number>>;
   readMemory(address: number, count: number): Promise<Buffer>;
+  /** Optional for standalone consumers; real adapters record into their session ledger. */
+  capabilities?: Pick<CapabilityLedger, 'record'>;
 }
 
 /** Logical IP is separate from the linear address when CS.base is nonzero. */
@@ -41,11 +78,14 @@ export function decodeInstructions(bytes: Uint8Array, bits: 16 | 32, address: nu
   validAddress(logicalIP);
   if (bits !== 16 && bits !== 32) throw new Error('反汇编仅支持 16 或 32 位指令');
   if (bytes.length > MAX_BYTES || address + bytes.length > ADDRESS_SPACE) throw new Error('反汇编字节范围超过 4096 字节或 32 位地址空间');
-  const decoder = new Decoder(bits, bytes, DecoderOptions.None);
+  if (!bytes.length) return [];
+  const iced = loadDecoder();
+  let decoder: Decoder | undefined;
   let formatter: Formatter | undefined;
   try {
+    decoder = new iced.Decoder(bits, bytes, iced.DecoderOptions.None);
     decoder.ip = BigInt(logicalIP);
-    formatter = new Formatter(FormatterSyntax.Nasm);
+    formatter = new iced.Formatter(iced.FormatterSyntax.Nasm);
     formatter.hexPrefix = '0x';
     formatter.hexSuffix = '';
     formatter.uppercaseHex = false;
@@ -65,7 +105,8 @@ export function decodeInstructions(bytes: Uint8Array, bits: 16 | 32, address: nu
       } finally { instruction.free(); }
     }
     return result;
-  } finally { formatter?.free(); decoder.free(); }
+  } catch (error) { throw unavailableDecoder(error); }
+  finally { formatter?.free(); decoder?.free(); }
 }
 
 /** The same bounded implementation serves native DAP and the inspector. */
@@ -100,8 +141,26 @@ export async function disassemble(runtime: DisassemblyRuntime, rawArgs: unknown 
     address: hexAddress(item.address), instructionBytes: item.bytes, instruction: item.text, size: item.size,
     ...(item.valid ? {} : { presentationHint: 'invalid' as const })
   });
+  const decode = (bytes: Buffer, at: number, ip: number): DecodedInstruction[] => {
+    let decoded: DecodedInstruction[];
+    try { decoded = decodeInstructions(bytes, bits, at, ip); }
+    catch (error) {
+      if (error instanceof DecoderDependencyError) runtime.capabilities?.record('decoder', {
+        state: 'unsupported', evidence: 'executable', reason: error.message,
+        details: { dependency: error.dependency, bits, address: at, bytes: bytes.length },
+      });
+      throw error;
+    }
+    // Empty/unreadable memory never initialized the decoder, so it provides no
+    // decoder evidence. Memory and register failures belong to their own capability.
+    if (bytes.length) runtime.capabilities?.record('decoder', {
+      state: 'supported', evidence: 'integration', reason: `已用当前目标的 ${bytes.length} 字节完成 ${bits} 位解码（含无效编码识别）`,
+      details: { dependency: 'iced-x86', bits, address: at, bytes: bytes.length, instructions: decoded.length },
+    });
+    return decoded;
+  };
   const requested = Math.min(MAX_BYTES, (Math.max(0, instructionOffset) + count) * 15, end - address);
-  let decoded = decodeInstructions(await readablePrefix(runtime, address, requested), bits, address, logicalIP);
+  let decoded = decode(await readablePrefix(runtime, address, requested), address, logicalIP);
   let items: DisassembledInstruction[];
   if (instructionOffset < 0) {
     const preceding = -instructionOffset;
@@ -111,7 +170,7 @@ export async function disassemble(runtime: DisassemblyRuntime, rawArgs: unknown 
     const pcOffset = (pc - base + ADDRESS_SPACE) % ADDRESS_SPACE;
     if (pc < address && address - pc <= MAX_BYTES && pcOffset + address - pc <= limit) {
       const bytes = await readablePrefix(runtime, pc, address - pc);
-      const chain = decodeInstructions(bytes, bits, pc, pcOffset);
+      const chain = decode(bytes, pc, pcOffset);
       if (chain.length && chain.every(item => item.valid) && chain.at(-1)!.address + chain.at(-1)!.size === address) prefix = chain.slice(-preceding);
     }
     const missing = preceding - prefix.length;

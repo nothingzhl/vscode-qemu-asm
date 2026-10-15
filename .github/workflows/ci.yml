@@ -82,6 +82,11 @@ jobs:
         run: npm run test:c-source 2>&1 | tee c-source-integration.log
         shell: bash
         timeout-minutes: 4
+      - name: Test shared dependency boundaries with actual tools
+        if: runner.os == 'Linux'
+        run: npm run test:dependencies 2>&1 | tee dependency-integration.log
+        shell: bash
+        timeout-minutes: 3
       - name: Test Linux VS Code commands and debugger
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
@@ -106,5 +111,6 @@ jobs:
             paging-integration.log
             c-machine-integration.log
             c-source-integration.log
+            dependency-integration.log
             host-test.log
           if-no-files-found: ignore

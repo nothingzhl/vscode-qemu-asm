@@ -1,4 +1,6 @@
-import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { localHost } from '../platform/host';
+import { requireExecutable } from '../dependencies/tools';
 import { EventEmitter } from 'node:events';
 
 export type MiValue = string | MiTuple | MiValue[];
@@ -164,7 +166,12 @@ export class MiClient extends EventEmitter {
   private readyReject!: (error: Error) => void;
   private readonly readyPromise: Promise<void>;
 
-  constructor(private readonly child: ChildProcessWithoutNullStreams, private readonly timeout = 15000) {
+  constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    private readonly timeout = 15000,
+    private readonly ownsProcessGroup = false,
+    readonly executable?: string,
+  ) {
     super();
     this.readyPromise = new Promise<void>((resolve, reject) => { this.readyResolve = resolve; this.readyReject = reject; });
     void this.readyPromise.catch(() => undefined);
@@ -173,18 +180,35 @@ export class MiClient extends EventEmitter {
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (text: string) => this.emit('stderr', text));
     child.once('error', error => this.finish(error));
+    // Only static start creates a private process group. Public constructor
+    // consumers may supply a child in the extension's own process group.
+    if (ownsProcessGroup) child.once('exit', () => localHost.terminateProcessTree(child, 'SIGKILL'));
     child.once('close', (code, signal) => this.finish(new Error(signal ? `GDB 被信号 ${signal} 终止` : `GDB 已退出（${code ?? '未知'}）`)));
   }
 
-  static async start(executable: string, args: string[], cwd: string, timeout = 15000): Promise<MiClient> {
-    const child = spawn(executable, args, { cwd, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } });
-    const client = new MiClient(child, timeout);
+  static async start(executable: string, args: string[], cwd: string, timeout = 15000, signal?: AbortSignal): Promise<MiClient> {
+    const cancellation = new Error('GDB/MI 启动已取消');
+    if (signal?.aborted) throw cancellation;
+    const tool = requireExecutable(executable, cwd, localHost);
+    const child = localHost.spawn(tool.executable, args, {
+      cwd, shell: false, windowsHide: true, detached: localHost.identity.platform !== 'win32',
+      stdio: ['pipe', 'pipe', 'pipe'], env: { ...localHost.env, LC_ALL: 'C' },
+    });
+    const client = new MiClient(child, timeout, true, tool.executable);
     let timer: NodeJS.Timeout | undefined;
+    let aborted = false;
+    let onAbort: (() => void) | undefined;
     try {
-      await Promise.race([client.readyPromise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('等待 GDB/MI 启动超时')), timeout); })]);
+      const abort = new Promise<never>((_, reject) => {
+        onAbort = () => { aborted = true; reject(cancellation); void client.dispose(); };
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted) onAbort();
+      });
+      await Promise.race([abort, client.readyPromise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('等待 GDB/MI 启动超时')), timeout); })]);
+      if (aborted) throw cancellation;
       return client;
-    } catch (error) { await client.dispose(); throw error; }
-    finally { if (timer) clearTimeout(timer); }
+    } catch (error) { await client.dispose(); throw aborted ? cancellation : error; }
+    finally { if (timer) clearTimeout(timer); if (onAbort) signal?.removeEventListener('abort', onAbort); }
   }
 
   command(command: string): Promise<MiRecord> { return this.transaction(execute => execute(command)); }
@@ -257,11 +281,15 @@ export class MiClient extends EventEmitter {
     else {
       let finished = false;
       const finish = () => { if (finished) return; finished = true; clearTimeout(force); clearTimeout(limit); complete(); };
-      const force = setTimeout(() => { this.child.kill('SIGKILL'); }, 500);
+      const terminate = (signal: 'SIGTERM' | 'SIGKILL') => {
+        if (this.ownsProcessGroup) localHost.terminateProcessTree(this.child, signal);
+        else this.child.kill(signal);
+      };
+      const force = setTimeout(() => { terminate('SIGKILL'); }, 500);
       const limit = setTimeout(finish, 1800);
       this.child.once('close', finish);
       this.child.stdin.destroy();
-      this.child.kill('SIGTERM');
+      terminate('SIGTERM');
     }
     return this.disposal;
   }

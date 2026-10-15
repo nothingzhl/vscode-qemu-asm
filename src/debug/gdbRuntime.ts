@@ -1,8 +1,11 @@
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
 import { Project, Processes, qemuArguments } from '../core';
+import { CapabilityLedger } from '../dependencies/capabilities';
+import { localHost } from '../platform/host';
 import { cpuMode, monitorRegisters } from './runtime';
 import { MiClient, MiRecord, MiTuple, MiValue, miQuote } from './mi';
 
@@ -62,8 +65,10 @@ export async function validateDebugElf(file: string): Promise<void> {
 
 /** C 模式只有 GDB 持有 QEMU GDB socket，避免两套 RSP 客户端争用目标。 */
 export class GdbRuntime extends EventEmitter {
+  readonly capabilities: CapabilityLedger;
   private readonly processes = new Processes();
   private client?: MiClient;
+  private clientStartup?: Promise<MiClient>;
   private launched = false;
   private active = false;
   private stopping = false;
@@ -78,8 +83,21 @@ export class GdbRuntime extends EventEmitter {
   private registerNames: string[] = [];
   private initialStop: MiTuple = {};
   private disposal?: Promise<void>;
+  private readonly startup = new AbortController();
 
-  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) { super(); }
+  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) {
+    super();
+    const tools: Record<string, string> = {};
+    const selectedTools: [string, string | undefined][] = [['qemu', project.qemu], ['gdb', project.debug?.gdb]];
+    for (const [name, requested] of selectedTools) {
+      if (typeof requested !== 'string') continue;
+      tools[name] = requested;
+    }
+    this.capabilities = new CapabilityLedger({
+      sessionId: randomUUID(), targetId: project.image, backend: 'c-gdb-mi',
+      host: localHost.identity, tools, machine: project.qemuArgs,
+    });
+  }
 
   isRunning(): boolean { return this.running; }
 
@@ -96,6 +114,8 @@ export class GdbRuntime extends EventEmitter {
       if (this.stopping) throw new Error('C 调试启动已取消');
       const port = await freePort();
       const child = this.processes.start(this.project.qemu, [...qemuArguments(this.project), ...this.extraArgs, '-S', '-gdb', `tcp:127.0.0.1:${port}`], this.project.root, text => { this.log(text); this.emit('output', text); });
+      const qemuExecutable = child.tool.executable ?? this.project.qemu;
+      this.capabilities.bindTools({ qemu: qemuExecutable, gdb: debug.gdb });
       let qemuError: Error | undefined;
       void child.done.then(() => {
         qemuError = new Error('QEMU 已退出');
@@ -105,7 +125,8 @@ export class GdbRuntime extends EventEmitter {
         if (!this.stopping) { this.finish(qemuError); void this.dispose(); }
       });
       await child.ready;
-      this.client = await MiClient.start(debug.gdb, ['--nx', '--nh', '--quiet', '--interpreter=mi2', '-iex', 'set auto-load off', '-iex', 'set debuginfod enabled off', '-iex', 'set may-call-functions off'], this.project.root);
+      this.client = await (this.clientStartup = MiClient.start(debug.gdb, ['--nx', '--nh', '--quiet', '--interpreter=mi2', '-iex', 'set auto-load off', '-iex', 'set debuginfod enabled off', '-iex', 'set may-call-functions off'], this.project.root, 15000, this.startup.signal));
+      this.capabilities.bindTools({ qemu: qemuExecutable, gdb: this.client.executable ?? debug.gdb });
       if (this.stopping) { await this.client.dispose(); throw new Error('C 调试启动已取消'); }
       const client = this.client;
       client.on('record', (record: MiRecord) => this.record(record));
@@ -114,6 +135,9 @@ export class GdbRuntime extends EventEmitter {
       client.on('terminated', (error: Error) => { if (!this.stopping) { this.finish(error); void this.dispose(); } });
       for (const setting of ['auto-load off', 'debuginfod enabled off', 'may-call-functions off', 'pagination off', 'confirm off', 'mi-async on', 'language c', 'architecture i386', 'trust-readonly-sections off', 'stack-cache off', 'code-cache off', 'mem inaccessible-by-default off']) await client.command(`-gdb-set ${setting}`);
       await client.command(`-file-exec-and-symbols ${miQuote(debug.elf)}`);
+      this.capabilities.record('gdb.mi', {
+        state: 'supported', evidence: 'protocol', reason: '当前 GDB MI 通道已完成初始化设置与 ELF 符号加载',
+      });
       for (const [before, after] of Object.entries(debug.sourceMap ?? {})) {
         await client.command(`-interpreter-exec console ${miQuote(`set substitute-path ${gdbPathQuote(before)} ${gdbPathQuote(after)}`)}`);
       }
@@ -127,11 +151,20 @@ export class GdbRuntime extends EventEmitter {
         }
       }
       const names = (await client.command('-data-list-register-names')).results['register-names'];
-      if (!Array.isArray(names) || names.some(name => typeof name !== 'string')) throw new Error('GDB 返回无效的寄存器名称');
-      this.registerNames = names as string[];
-      for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
-        if (!this.registerNames.includes(name)) throw new Error(`当前 C 调试仅支持 i386 32 位寄存器布局，缺少 ${name}`);
+      try {
+        if (!Array.isArray(names) || names.some(name => typeof name !== 'string')) throw new Error('GDB 返回无效的寄存器名称');
+        this.registerNames = names as string[];
+        for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
+          if (!this.registerNames.includes(name)) throw new Error(`当前 C 调试仅支持 i386 32 位寄存器布局，缺少 ${name}`);
+        }
+      } catch (error) {
+        this.capabilities.record('qemu.rspTarget', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
+        throw error;
       }
+      this.capabilities.record('qemu.rspTarget', {
+        state: 'supported', evidence: 'protocol',
+        reason: '当前 GDB MI 通道已连接 QEMU 并确认必需 i386 寄存器；未另建 RSP 通道或读取 target XML',
+      });
       this.running = false;
       await this.registers();
       this.active = true;
@@ -184,8 +217,19 @@ export class GdbRuntime extends EventEmitter {
         if (registers[name] === undefined) throw new Error(`GDB 无法读取 ${name} 寄存器`);
       }
       const monitor = await this.quietly(execute, `-interpreter-exec console ${miQuote('monitor info registers')}`);
-      Object.assign(registers, monitorRegisters(monitor.console ?? ''));
-      cpuMode(registers);
+      try {
+        Object.assign(registers, monitorRegisters(monitor.console ?? ''));
+        const mode = cpuMode(registers);
+        this.capabilities.record('qemu.segmentRegisters', {
+          state: 'supported', evidence: 'protocol', reason: '当前 GDB MI monitor 的 CR0 与段缓存已解析并通过 CPU 模式校验',
+          details: { mode },
+        });
+      } catch (error) {
+        this.capabilities.record('qemu.segmentRegisters', {
+          state: 'unsupported', evidence: 'protocol', reason: (error as Error).message,
+        });
+        throw error;
+      }
       return registers;
   }
 
@@ -224,9 +268,18 @@ export class GdbRuntime extends EventEmitter {
         return response[1];
       };
       const mode = await packet('qqemu.PhyMemMode');
-      if (mode !== '0' && mode !== '1') throw new Error('当前 QEMU 不支持物理内存读取（qqemu.PhyMemMode）');
+      if (mode !== '0' && mode !== '1') {
+        const error = new Error('当前 QEMU 不支持物理内存读取（qqemu.PhyMemMode）');
+        this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: error.message });
+        throw error;
+      }
+      let result: Buffer;
       try {
-        if (await packet('Qqemu.PhyMemMode:1') !== 'OK') throw new Error('无法启用 QEMU 物理内存模式');
+        try { if (await packet('Qqemu.PhyMemMode:1') !== 'OK') throw new Error('无法启用 QEMU 物理内存模式'); }
+        catch (error) {
+          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
+          throw error;
+        }
         const buffers: Buffer[] = [];
         for (let offset = 0; offset < count; offset += 512) {
           const size = Math.min(512, count - offset);
@@ -234,16 +287,22 @@ export class GdbRuntime extends EventEmitter {
           if (!/^(?:[\da-f]{2})+$/i.test(response) || response.length !== size * 2) throw new Error('QEMU 返回不完整的物理内存数据');
           buffers.push(Buffer.from(response, 'hex'));
         }
-        return Buffer.concat(buffers);
+        result = Buffer.concat(buffers);
       } finally {
         try { if (await packet('Qqemu.PhyMemMode:0') !== 'OK') throw new Error('QEMU 拒绝恢复虚拟地址模式'); }
         catch (error) {
           const failure = new Error(`物理内存读取后无法恢复虚拟地址模式，会话已关闭：${(error as Error).message}`);
+          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: failure.message });
           this.finish(failure);
           void this.dispose();
           throw failure;
         }
       }
+      this.capabilities.record('qemu.physicalMemory', {
+        state: 'supported', evidence: 'protocol', reason: '当前 GDB MI 维护包通道已完成非零物理内存读取并恢复虚拟地址模式',
+        details: { bytesRead: result.length },
+      });
+      return result;
     });
   }
 
@@ -268,7 +327,11 @@ export class GdbRuntime extends EventEmitter {
     if (this.disposal) return this.disposal;
     this.stopping = true;
     this.running = false;
-    this.disposal = Promise.allSettled([this.client?.dispose(), this.processes.dispose()]).then(() => { this.finish(); });
+    this.startup.abort();
+    this.disposal = Promise.allSettled([
+      this.client?.dispose(), this.processes.dispose(),
+      this.clientStartup?.then(client => client.dispose(), () => undefined),
+    ]).then(() => { this.finish(); });
     return this.disposal;
   }
 

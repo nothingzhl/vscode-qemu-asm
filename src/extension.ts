@@ -5,7 +5,10 @@ import { DisplayController } from './display/controller';
 import { AssemblyDebugAdapter } from './debug/adapter';
 import { CSourceDebugAdapter } from './debug/cAdapter';
 import { InspectorProvider } from './inspector/provider';
-import { build, createProject, execute, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
+import { build, createProject, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
+
+import { checkEnvironment, formatEnvironmentReport } from './dependencies/doctor';
+import type { CapabilityLedger, CapabilityReport } from './dependencies/capabilities';
 
 let processes: Processes | undefined;
 let displays: DisplayController | undefined;
@@ -24,6 +27,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const trusted = () => { if (!vscode.workspace.isTrusted) throw new Error('请先信任此工作区，才可执行工具或创建项目。'); };
   const display = displays = new DisplayController(context, trusted, text => output.append(text));
   const inspector = new InspectorProvider(context);
+  const reports = new Map<string, string>();
+  let reportSequence = 0;
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider('qemu-asm-report', { provideTextDocumentContent: uri => reports.get(uri.toString()) ?? JSON.stringify({ status: 'expired', reason: '此报告属于已结束的扩展会话，请重新执行依赖报告命令。' }, null, 2) }),
+    vscode.workspace.onDidCloseTextDocument(document => { if (document.uri.scheme === 'qemu-asm-report') reports.delete(document.uri.toString()); })
+  );
   context.subscriptions.push(inspector,
     vscode.window.registerWebviewViewProvider('qemuAsm.inspector', inspector, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.debug.registerDebugAdapterTrackerFactory('qemu-asm', { createDebugAdapterTracker: session => inspector.createDebugAdapterTracker(session) }),
@@ -66,32 +75,50 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     output.appendLine(`构建成功：${p.image}`);
   }
-  function register(name: string, action: () => Promise<void>, exclusive = true): void {
+  function register(name: string, action: () => Promise<unknown>, exclusive = true): void {
     context.subscriptions.push(vscode.commands.registerCommand(`qemuAsm.${name}`, async () => {
       if (exclusive && busy) { void vscode.window.showWarningMessage('正在执行操作，请稍候或停止。'); return; }
       if (exclusive) busy = true;
-      try { trusted(); output.show(true); await action(); }
+      try { trusted(); output.show(true); return await action(); }
       catch (error) { const message = error instanceof Error ? error.message : String(error); output.appendLine(message); state('失败'); void vscode.window.showErrorMessage(`QEMU Assembly：${message}`); }
       finally { if (exclusive) busy = false; }
     }));
   }
-  register('checkEnvironment', async () => {
-    let p = await project(false);
-    try { await fs.access(path.join(p.root, 'qemu-asm.json')); p = await project(); }
+  async function environmentReport() {
+    const selected = await folder();
+    let p = await project(false, selected);
+    try { await fs.access(path.join(p.root, 'qemu-asm.json')); p = await project(true, selected); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-    let missing = false;
-    const checks: [string, string[], string][] = [
-      ...(p.build ? [] : [[p.nasm, ['-v'], 'nasmPath'] as [string, string[], string]]),
-      [p.qemu, ['--version'], 'qemuPath'],
-      ...(p.debug ? [[p.debug.gdb, ['--version'], 'gdbPath'] as [string, string[], string]] : [])
-    ];
-    for (const [tool, args, setting] of checks) {
-      output.appendLine(`检测工具：${tool}`);
-      try { await execute(runner, tool, [...args], p.workspace, text => output.append(text)); }
-      catch (error) { missing = true; output.appendLine(`缺失或不可用：${String(error)}。请配置 qemuAsm.${setting}（可执行文件路径，不含命令参数）。`); }
+    const token = generation;
+    let runtimeReport: CapabilityReport | undefined;
+    const session = vscode.debug.activeDebugSession;
+    if (session?.type === 'qemu-asm') {
+      try { runtimeReport = await session.customRequest('qemuAsm.dependencyReport') as CapabilityReport; }
+      catch (error) { output.appendLine(`当前会话报告暂不可用：${String(error)}`); }
     }
-    void vscode.window.showInformationMessage(missing ? '环境检查发现缺失项，请查看 QEMU Assembly 日志。' : '项目所需工具的环境检查通过。');
+    trusted();
+    const report = await checkEnvironment(p, runner, { cancelled: () => token !== generation || !vscode.workspace.isTrusted, runtimeReport });
+    output.append(formatEnvironmentReport(report));
+    output.appendLine(`VS Code 扩展宿主：${vscode.env.remoteName ?? '本地'}；工具在此宿主执行。`);
+    return report;
+  }
+  register('checkEnvironment', async () => {
+    const report = await environmentReport();
+    void vscode.window.showInformationMessage(report.status === 'passed' ? '工具解析与版本检查通过；协议能力请查看实际调试会话报告。' : '依赖检查发现失败项或已取消，请查看 QEMU Assembly 日志。');
+    return report;
   });
+  register('showDependencyReport', async () => {
+    const report = await environmentReport();
+    const uri = vscode.Uri.from({ scheme: 'qemu-asm-report', path: `/dependency-report-${++reportSequence}.json` });
+    reports.set(uri.toString(), JSON.stringify(report, null, 2) + '\n');
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.languages.setTextDocumentLanguage(document, 'json');
+    await vscode.window.showTextDocument(document, { preview: false });
+    return report;
+  });
+  function displayEnabled(selected?: vscode.WorkspaceFolder): boolean {
+    return vscode.workspace.getConfiguration('qemuAsm', selected?.uri).get<string>('displayMode', 'auto') !== 'off';
+  }
   async function createExample(template: 'boot' | 'protected'): Promise<void> {
     const selected = await folder();
     const dirs = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true, canSelectMany: false, defaultUri: selected.uri, openLabel: '在此目录创建示例' });
@@ -119,20 +146,21 @@ export function activate(context: vscode.ExtensionContext): void {
     await stop();
     const token = generation;
     if (!await vscode.workspace.saveAll(false)) throw new Error('文件未能保存，已取消构建。');
-    const p = await project();
+    const selected = await folder();
+    const p = await project(true, selected);
     trusted();
     if (token !== generation) return;
     await compile(p, token);
     if (token !== generation) return;
-    const screen = await display.create();
-    if (token !== generation) { await display.stop(screen); return; }
+    const screen = await display.createOptional({ enabled: displayEnabled(selected) });
+    if (token !== generation) { if (screen) await display.stop(screen); return; }
     let run: ReturnType<Processes['start']>;
     try {
-      run = runner.start(p.qemu, [...qemuArguments(p), ...screen.args], p.root, text => output.append(text));
+      run = runner.start(p.qemu, [...qemuArguments(p), ...(screen?.args ?? [])], p.root, text => output.append(text));
       await run.ready;
-    } catch (error) { await display.stop(screen); throw error; }
-    void run.done.then(() => display.stop(screen), () => display.stop(screen)).catch(error => output.appendLine(String(error)));
-    await display.connect(screen);
+    } catch (error) { if (screen) await display.stop(screen); throw error; }
+    if (screen) void run.done.then(() => display.stop(screen), () => display.stop(screen)).catch(error => output.appendLine(String(error)));
+    if (screen) await display.connect(screen);
     if (token !== generation) { await runner.stop(); return; }
     running = true; state('运行中（点击停止）');
     output.appendLine('QEMU 已启动，使用“停止”结束运行。');
@@ -175,8 +203,19 @@ export function activate(context: vscode.ExtensionContext): void {
         if (configured.build && !configured.debug) throw new Error('外部构建的源码调试需要在 qemu-asm.json 中配置 debug.elf。');
         const Adapter = configured.debug ? CSourceDebugAdapter : AssemblyDebugAdapter;
         const adapter = new Adapter({ getProject: () => project(true, selected), isTrusted: () => vscode.workspace.isTrusted, log: text => output.append(text), createDisplay: async () => {
-          const screen = await display.create();
-          return { args: screen.args, connect: () => display.connect(screen), dispose: () => display.stop(screen) };
+          const screen = await display.createOptional({ enabled: displayEnabled(selected) });
+          if (!screen) return undefined;
+          return {
+            args: screen.args,
+            observeCapabilities: (ledger: CapabilityLedger) => {
+              screen.on('status', (status: { state: string; message?: string }) => {
+                if (status.state === 'connected') ledger.record('qemu.display', { state: 'unknown', evidence: 'protocol', reason: '当前 QEMU 的 QMP 连接与能力协商成功；实际截图及共享文件路径尚未验证' });
+                else if (status.state === 'error') ledger.record('qemu.display', { state: 'unsupported', evidence: 'protocol', reason: status.message ?? '当前显示连接或截图失败' });
+              });
+              screen.on('frame', (frame: { width: number; height: number }) => ledger.record('qemu.display', { state: 'supported', evidence: 'integration', reason: '已读取当前 QEMU 的截图并转换为显示画面', details: { width: frame.width, height: frame.height } }));
+            },
+            connect: () => display.connect(screen), dispose: () => display.stop(screen)
+          };
         } });
         debugAdapters.add(adapter);
         const dispose = adapter.dispose.bind(adapter);

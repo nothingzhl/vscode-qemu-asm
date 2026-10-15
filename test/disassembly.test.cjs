@@ -5,6 +5,84 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { decodeInstructions, disassemble } = require('../dist/debug/disassembly');
+const { CapabilityLedger } = require('../dist/dependencies/capabilities');
+
+test('loading the actual extension does not load the optional decoder; missing and broken WASM failures stay local and cached', () => {
+  for (const failure of ['missing', 'wasm', 'initialization']) {
+    // Intercept only this child process. Never rename shared node_modules while
+    // other unit/host/integration tests are using the installation.
+    const script = `
+      const assert = require('node:assert/strict');
+      const Module = require('node:module');
+      const load = Module._load;
+      let loads = 0;
+      Module._load = function(name, ...args) {
+        if (name === 'vscode') return {};
+        if (name === 'iced-x86') {
+          loads++;
+          if (${JSON.stringify(failure)} === 'missing') throw Object.assign(new Error('iced-x86 not installed'), { code: 'MODULE_NOT_FOUND' });
+          if (${JSON.stringify(failure)} === 'wasm') throw new WebAssembly.CompileError('iced_x86_bg.wasm is corrupt');
+          return { Decoder: class { constructor() { throw new Error('decoder initialization failed'); } },
+            Formatter: class {}, DecoderOptions: { None: 0 }, FormatterSyntax: { Nasm: 0 } };
+        }
+        return load.call(this, name, ...args);
+      };
+      const extension = require(${JSON.stringify(path.join(__dirname, '../dist/extension.js'))});
+      assert.equal(typeof extension.activate, 'function');
+      const decoder = require(${JSON.stringify(path.join(__dirname, '../dist/debug/disassembly.js'))});
+      assert.equal(loads, 0, 'extension module graph must not initialize optional WASM');
+      assert.deepEqual(decoder.decodeInstructions(Buffer.alloc(0), 16, 0), []);
+      assert.throws(() => decoder.decodeInstructions(Buffer.alloc(4097), 16, 0), /4096/);
+      assert.equal(loads, 0, 'validation and empty buffers do not need a decoder');
+      let first;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        assert.throws(() => decoder.decodeInstructions(Buffer.from([0x90]), 16, 0), error => {
+          assert(error instanceof decoder.DecoderDependencyError);
+          assert.equal(error.dependency, 'iced-x86');
+          assert.match(error.message, /解码器不可用.*iced-x86/);
+          assert(error.cause);
+          if (first) assert.equal(error, first, 'a failed dependency is not retried on every refresh');
+          first = error;
+          return true;
+        });
+      }
+      assert.equal(loads, 1);
+      const { CapabilityLedger } = require(${JSON.stringify(path.join(__dirname, '../dist/dependencies/capabilities.js'))});
+      const ledger = new CapabilityLedger({ sessionId: 'decoder-dependency-fault' });
+      const machine = { capabilities: ledger,
+        async registers() { return { cr0: 0x11, eflags: 2, cs: 8, cs_base: 0, cs_limit: 0xffffffff, cs_flags: 0xcf9b00, eip: 0x100000 }; },
+        async readMemory(address, count) { return Buffer.alloc(count, 0x90); } };
+      (async () => {
+        await assert.rejects(decoder.disassemble(machine, { count: 1 }), decoder.DecoderDependencyError);
+        const observation = ledger.snapshot().entries.find(entry => entry.id === 'decoder');
+        assert.equal(observation.state, 'unsupported');
+        assert.equal(observation.evidence, 'executable');
+        assert.match(observation.reason, /解码器不可用.*iced-x86/);
+        assert.equal(observation.details.bytes, 15);
+        assert.equal(loads, 1, 'recording a cached failure must not reload the dependency');
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    `;
+    const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 0, `${failure}: ${result.stderr || result.error}`);
+  }
+});
+
+test('successful decoder loading is lazy and reused by subsequent real decoding', () => {
+  const script = `
+    const assert = require('node:assert/strict');
+    const Module = require('node:module');
+    const load = Module._load;
+    let loads = 0;
+    Module._load = function(name, ...args) { if (name === 'iced-x86') loads++; return load.call(this, name, ...args); };
+    const decoder = require(${JSON.stringify(path.join(__dirname, '../dist/debug/disassembly.js'))});
+    assert.equal(loads, 0);
+    assert.equal(decoder.decodeInstructions(Buffer.from([0x90]), 16, 0)[0].text, 'nop');
+    assert.equal(decoder.decodeInstructions(Buffer.from([0xc3]), 32, 0)[0].text, 'ret');
+    assert.equal(loads, 1);
+  `;
+  const result = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr || String(result.error));
+});
 
 function registers(bits = 32, changes = {}) {
   return { cr0: 0x11, eflags: 2, cs: 8, cs_base: 0, cs_limit: 0xffffffff,
@@ -23,6 +101,36 @@ function runtime(bytes, regs = registers(), start = regs.cs_base + regs.eip) {
     }
   };
 }
+
+test('real target bytes record decoder integration evidence without requiring a ledger on standalone runtimes', async () => {
+  const ledger = new CapabilityLedger({ sessionId: 'decoder-target-bytes' });
+  const r = runtime(Buffer.from('5589e590c3', 'hex'));
+  r.capabilities = ledger;
+  const result = await disassemble(r, { count: 3 });
+  assert.equal(result.instructions[0].instruction, 'push ebp');
+  const observation = ledger.snapshot().entries.find(entry => entry.id === 'decoder');
+  assert.equal(observation.state, 'supported');
+  assert.equal(observation.evidence, 'integration');
+  assert.deepEqual(observation.details, { dependency: 'iced-x86', bits: 32, address: 0x100000, bytes: 5, instructions: 4 });
+});
+
+test('memory and register failures do not invent or downgrade decoder evidence', async () => {
+  const ledger = new CapabilityLedger({ sessionId: 'decoder-unreadable-target' });
+  const unreadable = runtime(Buffer.alloc(0));
+  unreadable.capabilities = ledger;
+  const result = await disassemble(unreadable, { count: 1 });
+  assert.equal(result.instructions[0].presentationHint, 'invalid');
+  assert.equal(ledger.snapshot().entries.find(entry => entry.id === 'decoder').state, 'unknown');
+  ledger.record('decoder', { state: 'supported', evidence: 'integration', reason: 'previous actual decode' });
+  await disassemble(unreadable, { count: 1 });
+  let observation = ledger.snapshot().entries.find(entry => entry.id === 'decoder');
+  assert.equal(observation.state, 'supported');
+  assert.equal(observation.reason, 'previous actual decode');
+  await assert.rejects(disassemble({ ...unreadable, async registers() { throw new Error('register channel closed'); } }), /register channel closed/);
+  observation = ledger.snapshot().entries.find(entry => entry.id === 'decoder');
+  assert.equal(observation.state, 'supported');
+  assert.equal(observation.reason, 'previous actual decode');
+});
 
 test('16-bit decoding handles operand and address overrides and keeps linear addresses', () => {
   const decoded = decodeInstructions(Buffer.from('66b87856341267a178563412ea00800800', 'hex'), 16, 0x7c00);

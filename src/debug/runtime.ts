@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import * as net from 'node:net';
 import { Project, Processes, qemuArguments } from '../core';
+import { CapabilityLedger } from '../dependencies/capabilities';
+import { localHost } from '../platform/host';
 import { decodeRegisters, RegisterLayout, registerLayout, RspClient } from './rsp';
 
 export type WatchAccess = 'read' | 'write' | 'readWrite';
@@ -16,6 +19,7 @@ export interface StoppedEvent {
 
 /** 只负责一个单 CPU 的 QEMU 进程；源码映射由 DAP 适配器负责。 */
 export class DebugRuntime extends EventEmitter {
+  readonly capabilities: CapabilityLedger;
   private readonly processes = new Processes();
   private client?: RspClient;
   private layout: RegisterLayout[] = [];
@@ -34,7 +38,18 @@ export class DebugRuntime extends EventEmitter {
   private stopPackets: Promise<void> = Promise.resolve();
   private disposal?: Promise<void>;
 
-  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) { super(); }
+  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) {
+    super();
+    const tools: Record<string, string> = {};
+    for (const [name, requested] of [['nasm', project.nasm], ['qemu', project.qemu]]) {
+      if (typeof requested !== 'string') continue;
+      tools[name] = requested;
+    }
+    this.capabilities = new CapabilityLedger({
+      sessionId: randomUUID(), targetId: project.image, backend: 'nasm-rsp',
+      host: localHost.identity, tools, machine: project.qemuArgs,
+    });
+  }
 
   async launch(): Promise<void> {
     if (this.launched || this.stopping) throw new Error('调试运行时不能重复启动');
@@ -46,6 +61,7 @@ export class DebugRuntime extends EventEmitter {
       const port = await freePort();
       const args = [...qemuArguments(this.project), ...this.extraArgs, '-S', '-gdb', `tcp:127.0.0.1:${port}`];
       const process = this.processes.start(this.project.qemu, args, this.project.root, this.log);
+      this.capabilities.bindTools({ qemu: process.tool.executable ?? this.project.qemu });
       let processError: Error | undefined;
       void process.done.then(() => {
         processError = new Error('QEMU 已退出');
@@ -78,12 +94,21 @@ export class DebugRuntime extends EventEmitter {
       });
       await this.client.command('qSupported:multiprocess+;qXfer:features:read+;xmlRegisters=i386');
       const target = await this.readTarget('target.xml');
-      if (!/<architecture>\s*i386\s*<\/architecture>/.test(target)) throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局，不支持 64 位 CPU');
-      this.layout = registerLayout(target);
-      const names = new Set(this.layout.map(register => register.name));
-      for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
-        if (!names.has(name)) throw new Error(`QEMU 寄存器描述缺少 ${name}`);
+      try {
+        if (!/<architecture>\s*i386\s*<\/architecture>/.test(target)) throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局，不支持 64 位 CPU');
+        this.layout = registerLayout(target);
+        const names = new Set(this.layout.map(register => register.name));
+        for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
+          if (!names.has(name)) throw new Error(`QEMU 寄存器描述缺少 ${name}`);
+        }
+      } catch (error) {
+        this.capabilities.record('qemu.rspTarget', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
+        throw error;
       }
+      this.capabilities.record('qemu.rspTarget', {
+        state: 'supported', evidence: 'protocol',
+        reason: '当前 QEMU RSP 通道的 target XML 已确认 i386 架构与必需寄存器布局',
+      });
       const stopped = await this.client.command('?');
       if (!/^[TS][0-9a-f]{2}/i.test(stopped)) throw new Error('QEMU 没有在启动时暂停');
       await this.registers();
@@ -211,8 +236,19 @@ export class DebugRuntime extends EventEmitter {
   private async readRegisters(client: RspClient): Promise<Record<string, number>> {
     const registers = decodeRegisters(await client.command('g'), this.layout);
     const monitor = await client.command(`qRcmd,${Buffer.from('info registers').toString('hex')}`);
-    Object.assign(registers, monitorRegisters(monitor));
-    cpuMode(registers);
+    try {
+      Object.assign(registers, monitorRegisters(monitor));
+      const mode = cpuMode(registers);
+      this.capabilities.record('qemu.segmentRegisters', {
+        state: 'supported', evidence: 'protocol', reason: '当前 RSP monitor 的 CR0 与段缓存已解析并通过 CPU 模式校验',
+        details: { mode },
+      });
+    } catch (error) {
+      this.capabilities.record('qemu.segmentRegisters', {
+        state: 'unsupported', evidence: 'protocol', reason: (error as Error).message,
+      });
+      throw error;
+    }
     return registers;
   }
 
@@ -229,19 +265,34 @@ export class DebugRuntime extends EventEmitter {
     if (!count) return Buffer.alloc(0);
     return client.transaction(async command => {
       const mode = await command('qqemu.PhyMemMode');
-      if (mode !== '0' && mode !== '1') throw new Error('当前 QEMU 不支持物理内存读取（qqemu.PhyMemMode），请升级 QEMU');
+      if (mode !== '0' && mode !== '1') {
+        const error = new Error('当前 QEMU 不支持物理内存读取（qqemu.PhyMemMode），请升级 QEMU');
+        this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: error.message });
+        throw error;
+      }
       // 从发送切换请求开始就承担恢复责任，即使它返回错误也不能假定模式未改变。
+      let result: Buffer;
       try {
-        this.expectOK(await command('Qqemu.PhyMemMode:1'), '切换物理内存读取模式');
-        return await this.readMemoryChunks(command, address, count);
+        try { this.expectOK(await command('Qqemu.PhyMemMode:1'), '切换物理内存读取模式'); }
+        catch (error) {
+          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
+          throw error;
+        }
+        result = await this.readMemoryChunks(command, address, count);
       } finally {
         try { this.expectOK(await command('Qqemu.PhyMemMode:0'), '恢复虚拟内存读取模式'); }
         catch (error) {
+          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: `无法恢复虚拟地址模式：${(error as Error).message}` });
           // 不能让后续反汇编、栈或断点请求在未知地址模式下继续执行。
           client.close();
           throw new Error(`物理内存读取后无法恢复虚拟地址模式，调试会话已关闭：${(error as Error).message}`);
         }
       }
+      this.capabilities.record('qemu.physicalMemory', {
+        state: 'supported', evidence: 'protocol', reason: '当前 RSP 通道已完成非零物理内存读取并恢复虚拟地址模式',
+        details: { bytesRead: result.length },
+      });
+      return result;
     });
   }
 

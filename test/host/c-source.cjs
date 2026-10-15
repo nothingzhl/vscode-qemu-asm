@@ -4,9 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const vscode = require('vscode');
-const childProcess = require('node:child_process');
 const extensionRoot = process.env.QEMU_ASM_VSIX_EXTENSION || path.resolve(__dirname, '../..');
 const core = require(path.join(extensionRoot, 'dist', 'core.js'));
+const { localHost } = require(path.join(extensionRoot, 'dist', 'platform', 'host.js'));
 const { InspectorProvider } = require(path.join(extensionRoot, 'dist', 'inspector', 'provider.js'));
 const F = process.env.QEMU_ASM_VSIX_EXTENSION ? require('./c-source-fixture.cjs') : require('../../scripts/c-source-fixture.cjs');
 
@@ -31,8 +31,8 @@ exports.run = async function() {
   assert.equal(vscode.workspace.isTrusted, true);
   const folder = vscode.workspace.workspaceFolders[0];
   const gdbChildren = [];
-  const originalSpawn = childProcess.spawn;
-  childProcess.spawn = function(command, args, options) {
+  const originalSpawn = localHost.spawn;
+  localHost.spawn = function(command, args, options) {
     const child = originalSpawn.call(this, command, args, options);
     if (/^gdb(?:\.exe)?$/i.test(path.basename(command))) gdbChildren.push(child);
     return child;
@@ -180,6 +180,6 @@ exports.run = async function() {
     vscode.debug.removeBreakpoints(breakpoints);
     if (current && !terminated.has(current.session.id)) await vscode.debug.stopDebugging(current.session);
     await vscode.commands.executeCommand('qemuAsm.stop');
-    tracker.dispose(); listener.dispose(); childProcess.spawn = originalSpawn; core.Processes.prototype.start = original.start; InspectorProvider.prototype.post = original.post;
+    tracker.dispose(); listener.dispose(); localHost.spawn = originalSpawn; core.Processes.prototype.start = original.start; InspectorProvider.prototype.post = original.post;
   }
 };
