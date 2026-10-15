@@ -1,6 +1,6 @@
 import type { Decoder, Formatter } from 'iced-x86';
 import type { CapabilityLedger } from '../dependencies/capabilities';
-import { CpuMode, cpuMode, instructionAddress } from './runtime';
+import { CpuMode, cpuMode, instructionAddress } from '../domain/x86/state';
 
 const ADDRESS_SPACE = 0x100000000;
 const MAX_BYTES = 4096;

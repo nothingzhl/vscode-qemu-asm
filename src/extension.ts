@@ -5,7 +5,13 @@ import { DisplayController } from './display/controller';
 import { AssemblyDebugAdapter } from './debug/adapter';
 import { CSourceDebugAdapter } from './debug/cAdapter';
 import { InspectorProvider } from './inspector/provider';
-import { build, createProject, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
+import { build } from './project/build';
+import { createProject } from './project/create';
+import { parseErrors } from './project/diagnostics';
+import { Processes } from './platform/processes';
+import { qemuArguments } from './backends/qemu/arguments';
+import { resolveProject } from './project/config';
+import { Project } from './project/model';
 
 import { checkEnvironment, formatEnvironmentReport } from './dependencies/doctor';
 import type { CapabilityLedger, CapabilityReport } from './dependencies/capabilities';

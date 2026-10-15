@@ -1,4 +1,4 @@
-import { CpuMode, cpuMode, instructionAddress } from './runtime';
+import { CpuMode, cpuMode, instructionAddress } from '../domain/x86/state';
 
 /** Page-directory and page-table pointers are physical, even when CR0.PG is set. */
 export interface PagingRuntime {

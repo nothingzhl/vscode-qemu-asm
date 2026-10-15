@@ -3,13 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const coreRequire = require('node:module').createRequire(path.join(__dirname,'../dist/core.js'));
+const coreRequire = require('node:module').createRequire(path.join(__dirname,'../dist/project/config.js'));
 // Exercise the production resolver using Node's actual platform path implementations.
 // This validates path semantics; native process/filesystem behavior is tested separately in CI.
 function loadWithPath(platformPath) {
  const exports={};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../dist/core.js'),'utf8'),{exports,require:name=>name==='node:path'?platformPath:coreRequire(name),setTimeout,clearTimeout});
- return exports;
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../dist/project/config.js'),'utf8'),{exports,require:name=>name==='node:path'?platformPath:coreRequire(name),setTimeout,clearTimeout});
+ const diagnostics={};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../dist/project/diagnostics.js'),'utf8'),{exports:diagnostics,require:name=>name==='node:path'?platformPath:coreRequire(name)});
+ return {...exports,...diagnostics,qemuArguments:require('../dist/backends/qemu/arguments').qemuArguments};
 }
 for (const [platform, api, workspace, absoluteTool] of [
  ['Windows',path.win32,'C:\\Users\\开发者\\Asm Workspace','D:\\Tool Box\\nasm.exe'],

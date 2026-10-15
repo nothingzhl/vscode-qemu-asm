@@ -99,9 +99,13 @@ test('GDB runtime disposal cancels before a prompt and waits for startup process
   await fs.writeFile(elf, Buffer.concat([header, sections, strings, Buffer.from([1, 1])]));
   const instance = new GdbRuntime({ ...project(), root, debug: { elf, gdb: process.execPath } }, () => {});
   let disposed = 0;
-  instance.processes = {
+  const processBoundary = {
     start() { return { child: {}, ready: Promise.resolve(), done: new Promise(() => {}), tool: { executable: process.execPath } }; },
     async dispose() { disposed++; },
+  };
+  instance.machine = {
+    async start() { const run = processBoundary.start(); await run.ready; return { executable: run.tool.executable, debugEndpoint: {host: '127.0.0.1',port: 1234}, exited: run.done }; },
+    dispose: () => processBoundary.dispose(),
   };
   const originalStart = MiClient.start;
   let entered, signal, aborted, releaseCleanup;

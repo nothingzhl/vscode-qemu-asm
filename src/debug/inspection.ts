@@ -1,4 +1,4 @@
-import { CpuMode, cpuMode, instructionAddress, stackAddress } from './runtime';
+import { CpuMode, cpuMode, instructionAddress, stackAddress } from '../domain/x86/state';
 import { walkPaging } from './paging';
 
 /** Only paused, read-only runtime operations are exposed to the inspector. */
