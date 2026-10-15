@@ -1,0 +1,38 @@
+{
+  "name": "vscode-qemu-asm",
+  "displayName": "QEMU Assembly Toolkit",
+  "description": "在 VS Code 中编写、构建和调试 QEMU 汇编项目（开发中）。",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "nothingzhl",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nothingzhl/vscode-qemu-asm.git"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "check": "tsc --noEmit -p ./"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "qemuAsm.showProjectInfo",
+        "title": "QEMU Assembly: 查看项目说明"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.96.0",
+    "typescript": "5.9.3"
+  }
+}
