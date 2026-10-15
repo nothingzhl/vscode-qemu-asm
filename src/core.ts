@@ -253,13 +253,15 @@ times 1024-($-$$) db 0
 export interface Stage { source: string; loadAddress: number; lba: number }
 export interface BuildUnit extends Stage { size: number; listingPath?: string }
 export interface BuildResult { units: BuildUnit[]; imageBytes: number }
-export interface Project { workspace: string; root: string; source: string; image: string; stages: Stage[]; nasm: string; qemu: string; qemuArgs: string[] }
+export interface ExternalBuild { command: string; args: string[]; cwd: string; timeout: number }
+export interface ElfDebugConfiguration { elf: string; gdb: string; sourceMap?: Record<string, string>; entry?: string }
+export interface Project { workspace: string; root: string; source: string; image: string; stages: Stage[]; nasm: string; qemu: string; qemuArgs: string[]; build?: ExternalBuild; debug?: ElfDebugConfiguration }
 function string(value: unknown, fallback: string): string {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) throw new Error('配置必须是非空路径字符串');
   return value;
 }
-export function resolveProject(workspace: string, projectDir: unknown, data: unknown, tools: { nasm?: unknown; qemu?: unknown; qemuArgs?: unknown } = {}): Project {
+export function resolveProject(workspace: string, projectDir: unknown, data: unknown, tools: { nasm?: unknown; qemu?: unknown; qemuArgs?: unknown; gdb?: unknown } = {}): Project {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('项目配置必须是 JSON 对象');
   const config = data as Record<string, unknown>;
   const configuredPath = (value: unknown, fallback: string) => {
@@ -279,6 +281,49 @@ export function resolveProject(workspace: string, projectDir: unknown, data: unk
   if (args.length % 2 || args.some((a, i) => i % 2 === 0 ? !allowed.has(a) : a.startsWith('-') || !a.trim())) throw new Error('qemuArgs 仅支持 -m、-cpu、-smp 的选项/值对');
   const source = path.resolve(root, configuredPath(config.source, 'boot.asm'));
   const image = path.resolve(root, configuredPath(config.image, 'build/boot.img'));
+  const withinRoot = (file: string) => {
+    const relative = path.relative(root, file);
+    return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  };
+  let externalBuild: ExternalBuild | undefined;
+  if (config.build !== undefined) {
+    if (!config.build || typeof config.build !== 'object' || Array.isArray(config.build)) throw new Error('build 必须包含 command 与可选的 args、cwd、timeout');
+    const value = config.build as Record<string, unknown>;
+    if (typeof value.command !== 'string') throw new Error('build.command 必须为可执行文件路径');
+    const command = configuredPath(value.command, '');
+    const buildArgs = value.args === undefined ? [] : value.args;
+    if (!Array.isArray(buildArgs) || buildArgs.length > 256 || buildArgs.some(arg => typeof arg !== 'string' || arg.includes('\0'))) throw new Error('build.args 必须为最多 256 项的字符串数组');
+    const cwd = path.resolve(root, configuredPath(value.cwd, '.'));
+    if (!withinRoot(cwd)) throw new Error('build.cwd 必须位于项目内');
+    const timeout = value.timeout === undefined ? 120000 : value.timeout;
+    if (!Number.isInteger(timeout) || Number(timeout) < 100 || Number(timeout) > 1800000) throw new Error('build.timeout 必须为 100..1800000 毫秒的整数');
+    externalBuild = { command: command.includes('/') || command.includes('\\') ? path.resolve(root, command) : command, args: [...buildArgs], cwd, timeout: Number(timeout) };
+  }
+  let debug: ElfDebugConfiguration | undefined;
+  if (config.debug !== undefined) {
+    if (!config.debug || typeof config.debug !== 'object' || Array.isArray(config.debug)) throw new Error('debug 必须包含 elf 与可选的 gdbPath、sourceMap、entry');
+    const value = config.debug as Record<string, unknown>;
+    if (typeof value.elf !== 'string') throw new Error('debug.elf 必须为 ELF 文件路径');
+    const elf = path.resolve(root, configuredPath(value.elf, ''));
+    let sourceMap: Record<string, string> | undefined;
+    if (value.sourceMap !== undefined) {
+      if (!value.sourceMap || typeof value.sourceMap !== 'object' || Array.isArray(value.sourceMap) || Object.keys(value.sourceMap).length > 128) throw new Error('debug.sourceMap 必须为最多 128 项的路径映射对象');
+      sourceMap = Object.create(null) as Record<string, string>;
+      for (const [before, after] of Object.entries(value.sourceMap)) {
+        string(before, '');
+        if (typeof after !== 'string') throw new Error('debug.sourceMap 的目标必须为非空路径字符串');
+        sourceMap[before] = path.resolve(root, configuredPath(after, ''));
+      }
+    }
+    let entry: string | undefined;
+    if (value.entry !== undefined) {
+      entry = string(value.entry, '');
+      if (!/^(?:0x[\da-f]{1,8}|[a-z_.$][\w.$:]*)$/i.test(entry)) throw new Error('debug.entry 必须为函数符号或 32 位十六进制地址');
+    }
+    const gdbName = configuredPath(value.gdbPath === undefined ? tools.gdb : value.gdbPath, 'gdb');
+    const gdb = gdbName.includes('/') || gdbName.includes('\\') ? path.resolve(value.gdbPath === undefined ? workspace : root, gdbName) : gdbName;
+    debug = { elf, gdb, ...(sourceMap ? { sourceMap } : {}), ...(entry ? { entry } : {}) };
+  }
   if (config.stages !== undefined && (!Array.isArray(config.stages) || config.stages.length > 8)) throw new Error('stages 必须为最多 8 段的数组');
   const stages: Stage[] = (config.stages as unknown[] | undefined ?? []).map(value => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('stage 必须包含 source、loadAddress 与 lba');
@@ -288,10 +333,12 @@ export function resolveProject(workspace: string, projectDir: unknown, data: unk
     if (!Number.isInteger(stage.lba) || Number(stage.lba) < 1 || Number(stage.lba) > 17) throw new Error('首版 stage lba 必须为 1..17（引导磁道剩余扇区）');
     return { source: path.resolve(root, configuredPath(stage.source, '')), loadAddress: Number(stage.loadAddress), lba: Number(stage.lba) };
   });
+  if (externalBuild && stages.length) throw new Error('外部 build 自行生成镜像，不能同时配置 NASM stages');
   const relativeImage = path.relative(root, image);
   if ([source, ...stages.map(stage => stage.source)].includes(image) || relativeImage === '..' || relativeImage.startsWith(`..${path.sep}`) || path.isAbsolute(relativeImage)) throw new Error('镜像必须位于项目内且不能覆盖源码');
   if (image === path.join(root, 'qemu-asm.json')) throw new Error('镜像不能覆盖项目配置');
-  return { workspace, root, source, image, stages, nasm: tool(tools.nasm, 'nasm'), qemu: tool(tools.qemu, 'qemu-system-i386'), qemuArgs: [...args] };
+  if (debug?.elf === image) throw new Error('镜像不能覆盖 ELF 调试文件');
+  return { workspace, root, source, image, stages, nasm: tool(tools.nasm, 'nasm'), qemu: tool(tools.qemu, 'qemu-system-i386'), qemuArgs: [...args], ...(externalBuild ? { build: externalBuild } : {}), ...(debug ? { debug } : {}) };
 }
 export async function createProject(root: string, template: 'boot' | 'protected' = 'boot'): Promise<void> {
   await fs.mkdir(root, { recursive: true });
@@ -313,8 +360,13 @@ export class Processes {
   private closed = false;
   start(command: string, args: string[], cwd: string, log: (text: string) => void): { child: ChildProcess; ready: Promise<void>; done: Promise<void> } {
     if (this.closed) throw new Error('插件正在退出');
-    const child = spawn(command, args, { cwd, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    // External builders such as make create descendants. A dedicated process group keeps
+    // stop/timeout restricted to our own launch while also terminating its compilers.
+    const child = spawn(command, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     this.children.add(child);
+    // A leader may finish while an unref'ed compiler still runs, including with
+    // ignored stdio. Clean its group at exit, before forgetting the live PID.
+    child.once('exit', () => this.terminate(child, 'SIGKILL'));
     child.stdout?.setEncoding('utf8').on('data', text => log(text));
     child.stderr?.setEncoding('utf8').on('data', text => log(text));
     const ready = new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
@@ -329,24 +381,39 @@ export class Processes {
     void done.catch(() => undefined);
     return { child, ready, done };
   }
+  terminate(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
+    if (!this.children.has(child) || child.pid === undefined) return;
+    if (process.platform === 'win32') {
+      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
+      killer.once('error', () => child.kill(signal));
+      killer.once('exit', code => { if (code !== 0) child.kill(signal); });
+      return;
+    }
+    try { process.kill(-child.pid, signal); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') child.kill(signal); }
+  }
   async stop(): Promise<void> {
     await Promise.all([...this.children].map(child => new Promise<void>((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      if (!this.children.has(child)) { resolve(); return; }
       this.stopping.add(child);
-      const timer = setTimeout(() => child.kill('SIGKILL'), 1500);
+      const timer = setTimeout(() => this.terminate(child, 'SIGKILL'), 1500);
       child.once('close', () => { clearTimeout(timer); resolve(); });
-      child.kill('SIGTERM');
+      this.terminate(child, 'SIGTERM');
     })));
   }
   async dispose(): Promise<void> { this.closed = true; await this.stop(); }
 }
-export async function execute(processes: Processes, command: string, args: string[], cwd: string, log: (text: string) => void, timeout = 15000): Promise<void> {
+export async function execute(processes: Processes, command: string, args: string[], cwd: string, log: (text: string) => void, timeout = 15000, cancelled: () => boolean = () => false): Promise<void> {
+  if (cancelled()) throw new Error('构建已停止');
   const run = processes.start(command, args, cwd, log);
   let expired = false;
-  const timer = setTimeout(() => { expired = true; run.child.kill('SIGKILL'); }, timeout);
-  try { await run.ready; await run.done; if (expired) throw new Error(`${command} 执行超时`); }
-  catch (error) { if (expired) throw new Error(`${command} 执行超时`); throw error; }
-  finally { clearTimeout(timer); }
+  let stopped = false;
+  const terminate = () => { if (processes.terminate) processes.terminate(run.child, 'SIGKILL'); else run.child.kill('SIGKILL'); };
+  const timer = setTimeout(() => { expired = true; terminate(); }, timeout);
+  const cancellation = setInterval(() => { if (cancelled()) { stopped = true; terminate(); } }, 50);
+  try { await run.ready; await run.done; if (expired) throw new Error(`${command} 执行超时`); if (stopped || cancelled()) throw new Error('构建已停止'); }
+  catch (error) { if (expired) throw new Error(`${command} 执行超时`); if (stopped || cancelled()) throw new Error('构建已停止'); throw error; }
+  finally { clearTimeout(timer); clearInterval(cancellation); }
 }
 export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false, listingPath?: string): Promise<BuildResult> {
   const check = () => { if (cancelled()) throw new Error('构建已停止'); };
@@ -362,18 +429,54 @@ export async function build(project: Project, processes: Processes, log: (text: 
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   };
   const sources = [project.source, ...project.stages.map(stage => stage.source)];
-  const protectedPaths = [...sources, path.join(project.root, 'qemu-asm.json')];
+  const protectedPaths = [...sources, path.join(project.root, 'qemu-asm.json'), ...(project.debug ? [project.debug.elf] : [])];
   const protectedInfos = await Promise.all(protectedPaths.map(statIfExists));
   const outputs = [project.image, ...(listingPath ? [listingPath, ...project.stages.map((_, index) => `${listingPath}.stage${index + 1}.lst`)] : [])];
   const outputInfos = await Promise.all(outputs.map(statIfExists));
   const sameFile = (a: Awaited<ReturnType<typeof statIfExists>>, b: Awaited<ReturnType<typeof statIfExists>>) => a && b && a.dev === b.dev && a.ino === b.ino;
   for (let index = 0; index < outputs.length; index++) {
-    if (protectedPaths.some((file, i) => path.resolve(outputs[index]) === path.resolve(file) || sameFile(outputInfos[index], protectedInfos[i]))) throw new Error('输出与源码或项目配置指向同一文件，已取消构建');
+    if (protectedPaths.some((file, i) => path.resolve(outputs[index]) === path.resolve(file) || sameFile(outputInfos[index], protectedInfos[i]))) throw new Error('输出与源码、ELF 或项目配置指向同一文件，已取消构建');
     if (outputs.slice(0, index).some((file, i) => path.resolve(file) === path.resolve(outputs[index]) || sameFile(outputInfos[index], outputInfos[i]))) throw new Error('镜像与 listing 输出不能指向同一文件');
   }
   check();
   // Never accept an earlier artifact after a failed build. Use an exclusive temporary directory.
   await fs.rm(project.image, { force: true });
+  if (project.build) {
+    const assertExternalImageSafe = async () => {
+      const parent = await fs.realpath(path.dirname(project.image));
+      const relative = path.relative(actualRoot, parent);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('镜像目录不能通过符号链接指向项目外');
+      const info = await statIfExists(project.image);
+      const protectedNow = await Promise.all(protectedPaths.map(statIfExists));
+      if (protectedNow.some(item => sameFile(info, item))) throw new Error('镜像与源码、ELF 或项目配置指向同一文件');
+    };
+    try {
+      const cwd = await fs.realpath(project.build.cwd);
+      const relative = path.relative(actualRoot, cwd);
+      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error('build.cwd 不能通过符号链接指向项目外');
+      check();
+      log(`执行外部构建：${project.build.command}\n`);
+      await execute(processes, project.build.command, project.build.args, cwd, log, project.build.timeout, cancelled);
+      check();
+      await assertExternalImageSafe();
+      const info = await fs.lstat(project.image);
+      if (!info.isFile()) throw new Error('外部构建必须生成普通镜像文件，不能为目录或符号链接');
+      if (info.size < 512 || info.size > 1474560 || info.size % 512 !== 0) throw new Error('外部引导镜像必须为 512..1474560 字节并按 512 字节扇区对齐');
+      const image = await fs.open(project.image, 'r');
+      try {
+        const signature = Buffer.alloc(2);
+        const { bytesRead } = await image.read(signature, 0, 2, 510);
+        if (bytesRead !== 2 || signature[0] !== 0x55 || signature[1] !== 0xaa) throw new Error('外部引导镜像首扇区必须以 55 aa 结尾');
+      } finally { await image.close(); }
+      check();
+      return { units: [], imageBytes: info.size };
+    } catch (error) {
+      // A builder owns its ELF and other outputs. Only invalidate this image, and
+      // recheck aliases because a failed command may have changed its directory.
+      try { await assertExternalImageSafe(); await fs.rm(project.image, { force: true }); } catch { /* Preserve protected or redirected files. */ }
+      throw error;
+    }
+  }
   const temp = await fs.mkdtemp(path.join(path.dirname(project.image), '.qemu-asm-'));
   try {
     const output = path.join(temp, 'boot.img');

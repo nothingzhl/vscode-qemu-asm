@@ -155,6 +155,8 @@
   }
   function renderWatchpoints(snapshot, canMutate) {
     const data = snapshot.watchpoints; const body = $('watchpoint-body'); body.replaceChildren();
+    $('watchpoint-semantics').textContent = data?.warnings?.join(' ') || '';
+    $('watchpoint-semantics').hidden = !data?.warnings?.length;
     const hit = data?.lastHit;
     $('watchpoint-hit').hidden = !hit;
     $('watchpoint-hit').textContent = hit ? `已命中：${accessName(hit.access)} ${hex(hit.address)} · 暂停 PC ${hex(hit.pc)}` : '';

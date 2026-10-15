@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - name: Install Linux tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86 xvfb
+        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86 xvfb gdb gcc binutils
       - name: Install macOS tools
         if: runner.os == 'macOS'
         run: brew install nasm qemu
@@ -77,6 +77,11 @@ jobs:
         run: npm run test:c-machine 2>&1 | tee c-machine-integration.log
         shell: bash
         timeout-minutes: 3
+      - name: Test C source debugging with real ELF DWARF and GDB
+        if: runner.os == 'Linux'
+        run: npm run test:c-source 2>&1 | tee c-source-integration.log
+        shell: bash
+        timeout-minutes: 4
       - name: Test Linux VS Code commands and debugger
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
@@ -100,5 +105,6 @@ jobs:
             machine-debug-integration.log
             paging-integration.log
             c-machine-integration.log
+            c-source-integration.log
             host-test.log
           if-no-files-found: ignore
