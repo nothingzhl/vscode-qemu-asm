@@ -225,3 +225,34 @@ test('DWARF frame with file but no positive line never acquires a fabricated C s
   const frame = (await c.request('stackTrace')).body.stackFrames[0];
   assert.equal(frame.source, undefined); assert.equal(frame.line, 1); assert.equal(frame.instructionPointerReference, '0xC0000020');
 });
+
+test('disposing C DAP waits for a late display allocation and never launches its backend', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'c late allocation '));
+  const elf = path.join(root, 'kernel.elf');
+  await fs.writeFile(elf, Buffer.alloc(52));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  let open, entered;
+  const displayReady = new Promise(resolve => { open = resolve; });
+  const allocating = new Promise(resolve => { entered = resolve; });
+  let launched = 0, backendClosed = 0, displayClosed = 0;
+  const c = client(t, {
+    getProject: async () => ({ root, debug: { elf } }),
+    buildProject: async () => ({ units: [], imageBytes: 512 }),
+    createDisplay: async () => { entered(); await displayReady; return { args: [], async connect() {}, async dispose() { displayClosed++; } }; },
+    backendFactory: () => ({ async launch() { launched++; }, async dispose() { backendClosed++; } })
+  });
+  const launching = c.request('launch');
+  await allocating;
+  let stopped = false;
+  const stopping = c.adapter.dispose().then(() => { stopped = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(stopped, false);
+  open();
+  const [response] = await Promise.all([launching, stopping]);
+  assert.equal(response.success, false);
+  assert.match(response.message, /取消/);
+  assert.equal(launched, 0);
+  assert.equal(backendClosed, 1);
+  assert.equal(displayClosed, 1);
+  assert.equal(c.messages.filter(message => message.event === 'terminated').length, 1);
+});

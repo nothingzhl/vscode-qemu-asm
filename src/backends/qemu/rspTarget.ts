@@ -1,4 +1,4 @@
-import type { RspClient } from '../../debug/rsp';
+import type { RspClient } from '../rsp/client';
 export async function readTarget(
   client: Pick<RspClient, 'command'>,
   annex: string,

@@ -56,9 +56,6 @@ export class SourceBindings {
           continue;
         }
         try {
-          // MI quoting alone does not quote GDB's separate linespec grammar:
-          // commas in a valid filename are linespec delimiters. Explicit source
-          // and line options pass the filename as data through both parsers.
           const record = await runtime.insertSource(file, line),
             number = record.id;
           if (!number || record.address === undefined || record.pending) {

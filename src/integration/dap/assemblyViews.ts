@@ -1,7 +1,7 @@
 import { AssemblyFrames } from '../../application/assembly/frames';
 import { AssemblyVariables } from '../../application/assembly/variables';
 import { hex, integer } from '../../application/format';
-import { machineAddress, memoryDataId, watchpoint } from '../../debug/machineBreakpoints';
+import { machineAddress, memoryDataId, watchpoint } from '../../application/machine/breakpoints';
 import { cpuMode, instructionAddress, stackAddress } from '../../domain/x86/state';
 import type { MemoryReader, RegisterReader } from '../../ports/machine';
 import type { Request, Respond } from './protocol';

@@ -1,6 +1,6 @@
 import { hex, integer } from '../../application/format';
+import { machineAddress, memoryDataId, watchpoint } from '../../application/machine/breakpoints';
 import { SourceValues } from '../../application/source/values';
-import { machineAddress, memoryDataId, watchpoint } from '../../debug/machineBreakpoints';
 import { isSafeCExpression } from '../../domain/source/expression';
 import type { SourceBackend } from '../../ports/source';
 import type { Request, Respond } from './protocol';

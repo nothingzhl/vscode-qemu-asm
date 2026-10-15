@@ -1,11 +1,12 @@
 import { QemuGdbBackend } from '../backends/gdb/qemuBackend';
 import { GdbSourceAdapter } from '../backends/gdb/sourceAdapter';
 import { icedDecoder } from '../backends/iced/decoder';
+import { buildSourceMaps } from '../backends/nasm/sources';
 import { QemuRspBackend } from '../backends/qemu/rspBackend';
 import { QemuVirtualMachine } from '../backends/qemu/virtualMachine';
 import { Processes } from '../platform/processes';
-import type { AssemblyBackend, SessionLifecycle } from '../ports/machine';
-import type { SessionOptions, SessionResources } from '../ports/session';
+import type { SessionLifecycle } from '../ports/machine';
+import type { AssemblySessionOptions, SessionOptions, SessionResources } from '../ports/session';
 import type { SourceBackend } from '../ports/source';
 import { ManagedProjectBuilder } from '../project/builder';
 import type { Project } from '../project/model';
@@ -25,11 +26,13 @@ async function resources<Backend extends SessionLifecycle>(
   }
 }
 
-export function assemblyServices(options: AdapterOptions): SessionOptions<AssemblyBackend> {
+export function assemblyServices(options: AdapterOptions): AssemblySessionOptions {
+  const builder = new ManagedProjectBuilder(new Processes(), options.buildProject);
   return {
     ...options,
     decoder: icedDecoder,
-    builder: new ManagedProjectBuilder(new Processes(), options.buildProject),
+    builder,
+    sources: { load: (project, log, cancelled) => buildSourceMaps(project, builder, log, cancelled) },
     createResources: (project, log) =>
       resources(
         options,

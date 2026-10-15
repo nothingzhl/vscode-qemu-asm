@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { monitorRegisters } from '../../backends/qemu/monitor';
-import { decodeRegisters, RegisterLayout, registerLayout, RspClient } from '../../debug/rsp';
 import { CapabilityLedger } from '../../dependencies/capabilities';
 import { cpuMode, instructionAddress } from '../../domain/x86/state';
 import { localHost } from '../../platform/host';
 import type { VirtualMachine } from '../../ports/virtualMachine';
 import { Project } from '../../project/model';
+import { RspClient } from '../rsp/client';
+import { decodeRegisters, registerLayout, type RegisterLayout } from '../rsp/registers';
+import { monitorRegisters } from './monitor';
 import { RspBreakpoints } from './rspBreakpoints';
 import { RspMemory } from './rspMemory';
 import { stoppedEvent } from './rspStopped';

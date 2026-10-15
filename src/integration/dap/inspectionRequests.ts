@@ -1,6 +1,8 @@
 import { disassemble } from '../../application/disassembly';
-import { inspectDescriptors, inspectMemory, type InspectionRuntime } from '../../debug/inspection';
-import { inspectPaging } from '../../debug/paging';
+import { inspectDescriptors } from '../../application/inspection/descriptors';
+import { inspectMemory } from '../../application/inspection/memory';
+import { inspectPaging } from '../../application/inspection/paging';
+import type { InspectionRuntime } from '../../ports/inspection';
 import type { InstructionDecoder } from '../../ports/instructions';
 import type { CapabilityRecorder, PhysicalMemoryReader } from '../../ports/machine';
 import type { Request, Respond } from './protocol';

@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import type { SourceEntry, SourceMap } from '../../debug/listing';
+import type { SourceEntry, SourceMap } from '../../domain/source/map';
 import { stackRange } from '../../domain/x86/stack';
 import { cpuMode, instructionAddress, stackAddress } from '../../domain/x86/state';
 import type { MemoryReader, RegisterReader } from '../../ports/machine';

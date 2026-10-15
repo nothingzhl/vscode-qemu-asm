@@ -25,7 +25,8 @@ test('architecture boundaries prevent protocol and editor dependencies leaking i
         if (specifier) {
           const target = specifier.startsWith('.') ? path.resolve(path.dirname(file), specifier) : specifier;
           assert.ok(!/[\\/]backends[\\/]|iced-x86/.test(target), `${file} imports implementation ${specifier}`);
-          assert.ok(!/[\\/]debug[\\/](?:mi|runtime|gdbRuntime|adapter|cAdapter|disassembly)$/.test(target), `${file} imports compatibility entry ${specifier}`);
+          assert.ok(!/[\\/]debug[\\/].+|[\\/]core$/.test(target), `${file} imports compatibility entry ${specifier}`);
+          if (area === 'domain' || area === 'ports') assert.ok(!/[\\/]application[\\/]|[\\/]integration[\\/]/.test(target), `${file} reverses dependency direction ${specifier}`);
           if (area !== 'integration/dap') assert.notEqual(specifier, 'vscode', `${file} imports editor API`);
         }
         ts.forEachChild(node, visit);
@@ -106,4 +107,21 @@ test('source values consume typed capabilities without VM, MI transport or physi
   await values.expireVariables();
   assert.deepEqual(released, ['root']);
   assert.throws(() => values.frame(frame.id), /过期/);
+});
+
+test('production files stay small and documented state-machine exceptions cannot grow silently', () => {
+  const root = path.resolve(__dirname, '../src');
+  const exceptions = new Map([
+    ['integration/dap/assemblyAdapter.ts', 460],
+    ['integration/dap/sourceAdapter.ts', 430],
+    ['backends/qemu/rspBackend.ts', 380],
+    ['backends/gdb/qemuBackend.ts', 365]
+  ]);
+  const architecture = fs.readFileSync(path.join(root, '../docs/ARCHITECTURE.md'), 'utf8');
+  for (const file of files(root)) {
+    const relative = path.relative(root, file).split(path.sep).join('/');
+    const count = fs.readFileSync(file, 'utf8').trimEnd().split(/\r?\n/).length;
+    assert.ok(count <= (exceptions.get(relative) ?? 250), `${relative}: ${count} lines; split a responsibility or review the documented exception`);
+    if (exceptions.has(relative)) assert.ok(architecture.includes(relative), `${relative} needs an architecture explanation`);
+  }
 });

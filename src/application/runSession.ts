@@ -1,3 +1,4 @@
+import { releaseAll } from './release';
 import type { DebugDisplay } from '../ports/presentation';
 import type { MachineRun, VirtualMachine } from '../ports/virtualMachine';
 
@@ -60,7 +61,7 @@ export class RunSession {
   private release(owner: Resources): Promise<void> {
     let task = this.releasing.get(owner);
     if (!task) {
-      task = Promise.all([owner.machine.dispose(), owner.display?.dispose()]).then(() => undefined);
+      task = releaseAll([() => owner.machine.dispose(), () => owner.display?.dispose()]);
       this.releasing.set(owner, task);
       void task
         .finally(() => {

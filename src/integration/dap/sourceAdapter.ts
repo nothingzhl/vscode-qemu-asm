@@ -1,19 +1,20 @@
+import { releaseAll } from '../../application/release';
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import type { DebugAdapter, DebugProtocolMessage } from 'vscode';
 import { hex, integer } from '../../application/format';
+import { MachineBreakpoints, machineAddress } from '../../application/machine/breakpoints';
+import { SessionResourceOwner } from '../../application/sessionResources';
 import { SourceBindings } from '../../application/source/bindings';
 import { SourceValues } from '../../application/source/values';
-import { MachineBreakpoints, machineAddress } from '../../debug/machineBreakpoints';
 import { instructionAddress } from '../../domain/x86/state';
 import type { WatchAccess } from '../../ports/machine';
-import type { DebugDisplay } from '../../ports/presentation';
 import type { SessionOptions } from '../../ports/session';
 import type { SourceBackend, SourceMotion, SourceStoppedEvent } from '../../ports/source';
 import { Project } from '../../project/model';
 import { DapChannel } from './channel';
 import { InspectionRequests } from './inspectionRequests';
 import { MachineRequests } from './machineRequests';
+import { SourceBreakpointRequests } from './sourceBreakpoints';
 import { SourceViewRequests } from './sourceViews';
 
 interface Request {
@@ -44,9 +45,7 @@ export class SourceDapAdapter implements DebugAdapter {
   handleMessage(message: DebugProtocolMessage): void {
     this.channel.handleMessage(message);
   }
-  private runtime?: SourceBackend;
   private project?: Project;
-  private display?: DebugDisplay;
   private phase: 'idle' | 'preparing' | 'configuring' | 'booting' | 'stopped' | 'running' | 'ended' = 'idle';
   private epoch = 0;
   private disposed = false;
@@ -54,18 +53,17 @@ export class SourceDapAdapter implements DebugAdapter {
   private finishing?: Promise<void>;
   private launchArgs: Record<string, unknown> = {};
   private readonly machine = new MachineBreakpoints();
-  private desiredSources = new Map<string, number[]>();
   private stopOnEntry = true;
   private internalPause = false;
   private internalStop?: SourceStoppedEvent;
   private lastDataHit?: { address: number; access: WatchAccess; ids: number[]; pc: number };
   private readonly values = new SourceValues(
     () => this.requireStopped(),
-    () => this.runtime
+    () => this.resources.backend
   );
   private readonly bindings = new SourceBindings(
     () => this.breakpointRuntime().breakpoints,
-    (commands) => this.runtime?.breakpoints === commands,
+    (commands) => this.resources.backend?.breakpoints === commands,
     () => this.finish()
   );
   private readonly views = new SourceViewRequests(
@@ -88,8 +86,16 @@ export class SourceDapAdapter implements DebugAdapter {
     (request, body) => this.response(request, body),
     watchWarning
   );
+  private readonly sourceRequests = new SourceBreakpointRequests(
+    this.bindings,
+    (change, report) => this.updateSourceBreakpoints(change, report),
+    () => this.trust(),
+    (request, body) => this.response(request, body)
+  );
+  private readonly resources: SessionResourceOwner<SourceBackend>;
   private readonly inspections: InspectionRequests;
   constructor(private readonly options: SessionOptions<SourceBackend>) {
+    this.resources = new SessionResourceOwner(options.createResources);
     this.inspections = new InspectionRequests(
       () => this.requireStopped(),
       options.decoder,
@@ -126,15 +132,15 @@ export class SourceDapAdapter implements DebugAdapter {
   }
   private requireStopped(): SourceBackend {
     this.trust();
-    if (!this.runtime || this.phase !== 'stopped')
+    if (!this.resources.backend || this.phase !== 'stopped')
       throw new Error('请先暂停程序，再查看 C 变量、寄存器或内存');
-    return this.runtime;
+    return this.resources.backend;
   }
   private breakpointRuntime(): SourceBackend {
     this.trust();
-    if (!this.runtime || !['stopped', 'configuring'].includes(this.phase))
+    if (!this.resources.backend || !['stopped', 'configuring'].includes(this.phase))
       throw new Error('请先暂停程序，再修改断点');
-    return this.runtime;
+    return this.resources.backend;
   }
   private async prepare(args: Record<string, unknown>): Promise<void> {
     this.trust();
@@ -156,15 +162,14 @@ export class SourceDapAdapter implements DebugAdapter {
     await fs.access(project.debug.elf);
     this.trust();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
-    const resources = await this.options.createResources(project, (text) => this.output(text, 'stdout'));
-    if (epoch !== this.epoch) {
-      await Promise.all([resources.backend.dispose(), resources.display?.dispose()]);
-      throw new Error('调试启动已取消');
-    }
-    this.trust();
-    const display = (this.display = resources.display);
-    const runtime = (this.runtime = resources.backend);
-    if (runtime.capabilities) display?.observeCapabilities?.(runtime.capabilities);
+    const { backend: runtime } = await this.resources.allocate(
+      project,
+      (text) => this.output(text, 'stdout'),
+      () => {
+        this.trust();
+        if (epoch !== this.epoch) throw new Error('调试启动已取消');
+      }
+    );
     runtime.on('stopped', (event: SourceStoppedEvent) => {
       if (epoch !== this.epoch || this.phase === 'preparing' || this.phase === 'ended') return;
       if (this.internalPause) {
@@ -189,10 +194,11 @@ export class SourceDapAdapter implements DebugAdapter {
     await runtime.launch();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.phase = 'configuring';
-    for (const [file, lines] of this.desiredSources) await this.bindings.replaceSource(file, lines);
+    for (const [file, lines] of this.sourceRequests.desiredSources)
+      await this.bindings.replaceSource(file, lines);
     await this.bindings.replaceInstructions(this.machine.instructionAddresses());
     await this.bindings.replaceWatches(this.machine.dataPoints());
-    await display?.connect();
+    await this.resources.connect();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.output('C 源码调试已就绪：ELF/DWARF、源码单步、调用栈、只读变量，以及机器级调试观察器。\n');
   }
@@ -207,7 +213,7 @@ export class SourceDapAdapter implements DebugAdapter {
     this.event('continued', { threadId: 1, allThreadsContinued: true });
   }
   private async onStopped(event: SourceStoppedEvent): Promise<void> {
-    if (!this.runtime || this.phase === 'ended') return;
+    if (!this.resources.backend || this.phase === 'ended') return;
     if (event.reason === 'exit') {
       await this.finish();
       return;
@@ -215,12 +221,12 @@ export class SourceDapAdapter implements DebugAdapter {
     await this.values.expireVariables();
     this.phase = 'stopped';
     const number = event.breakpointId ?? '';
-    const registers = await this.runtime.registers(),
+    const registers = await this.resources.backend.registers(),
       pc = instructionAddress(registers);
     const hitEntry =
       !!this.bindings.entry && (number === this.bindings.entry.number || pc === this.bindings.entry.address);
     if (hitEntry) {
-      await this.bindings.deleteBindings(this.runtime.breakpoints, [this.bindings.entry!.number]);
+      await this.bindings.deleteBindings(this.resources.backend.breakpoints, [this.bindings.entry!.number]);
       this.bindings.entry = undefined;
     }
     const watch = [...this.bindings.watches.values()].find((binding) => binding.number === number);
@@ -270,15 +276,48 @@ export class SourceDapAdapter implements DebugAdapter {
     this.event('continued', { threadId: 1, allThreadsContinued: true });
   }
 
-  private async fileKey(file: string): Promise<string> {
-    let canonical = path.resolve(file);
+  private async updateSourceBreakpoints(
+    change: () => Promise<Map<number, Record<string, unknown>>>,
+    report: (results: Map<number, Record<string, unknown>>) => void
+  ): Promise<void> {
+    const wasRunning = ['running', 'booting'].includes(this.phase),
+      previous = this.phase;
+    if (wasRunning) {
+      this.internalPause = true;
+      this.internalStop = undefined;
+      try {
+        await this.resources.backend!.execution.pause();
+      } finally {
+        this.internalPause = false;
+      }
+      this.phase = 'stopped';
+    }
+    let results: Map<number, Record<string, unknown>>;
     try {
-      canonical = await fs.realpath(canonical);
-    } catch {}
-    return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
+      results = await change();
+    } catch (error) {
+      if (wasRunning && this.resources.backend && this.phase !== 'ended') {
+        if (!this.options.isTrusted()) await this.finish();
+        else await this.onStopped(this.internalStop ?? { reason: 'pause' });
+      }
+      this.internalStop = undefined;
+      throw error;
+    }
+
+    report(results);
+    if (wasRunning) {
+      const stop = this.internalStop;
+      this.internalStop = undefined;
+      if (stop && stop.reason !== 'pause') await this.onStopped(stop);
+      else {
+        await this.motion('continue');
+        if (previous === 'booting' && this.phase === 'running') this.phase = 'booting';
+      }
+    }
   }
 
   private async dispatch(request: Request): Promise<void> {
+    if (await this.sourceRequests.handle(request)) return;
     if (await this.views.handle(request)) return;
     if (await this.inspections.handle(request)) return;
     if (await this.machineRequests.handle(request)) return;
@@ -310,79 +349,14 @@ export class SourceDapAdapter implements DebugAdapter {
         return;
       case 'qemuAsm.dependencyReport':
         this.trust();
-        if (!this.runtime?.capabilities) throw new Error('调试运行时尚未提供依赖报告');
-        this.response(request, this.runtime.capabilities.snapshot());
+        if (!this.resources.backend?.capabilities) throw new Error('调试运行时尚未提供依赖报告');
+        this.response(request, this.resources.backend.capabilities.snapshot());
         return;
       case 'threads':
         this.response(request, {
           threads: this.phase === 'ended' ? [] : [{ id: 1, name: 'CPU 0（C / ELF / DWARF）' }]
         });
         return;
-      case 'setBreakpoints': {
-        this.trust();
-        const file =
-          typeof (args.source as { path?: unknown } | undefined)?.path === 'string'
-            ? await this.fileKey((args.source as { path: string }).path)
-            : '';
-        if (!file) throw new Error('源码断点需要 source.path');
-        const inputs = Array.isArray(args.breakpoints) ? (args.breakpoints as Record<string, unknown>[]) : [];
-        if (inputs.length > 256) throw new Error('每个源文件最多设置 256 个断点');
-        const lines = inputs
-          .filter(
-            (item) =>
-              Number.isInteger(item.line) &&
-              Number(item.line) > 0 &&
-              !item.condition &&
-              !item.hitCondition &&
-              !item.logMessage
-          )
-          .map((item) => Number(item.line));
-        const wasRunning = ['running', 'booting'].includes(this.phase),
-          previous = this.phase;
-        if (wasRunning) {
-          this.internalPause = true;
-          this.internalStop = undefined;
-          try {
-            await this.runtime!.execution.pause();
-          } finally {
-            this.internalPause = false;
-          }
-          this.phase = 'stopped';
-        }
-        let results: Map<number, Record<string, unknown>>;
-        try {
-          results = await this.bindings.replaceSource(file, lines);
-        } catch (error) {
-          if (wasRunning && this.runtime && this.phase !== 'ended') {
-            if (!this.options.isTrusted()) await this.finish();
-            else await this.onStopped(this.internalStop ?? { reason: 'pause' });
-          }
-          this.internalStop = undefined;
-          throw error;
-        }
-        this.desiredSources.set(file, lines);
-        this.response(request, {
-          breakpoints: inputs.map((item) =>
-            item.condition || item.hitCondition || item.logMessage
-              ? { verified: false, line: item.line, message: '暂不支持条件、命中次数或日志断点' }
-              : (results.get(Number(item.line)) ?? {
-                  verified: false,
-                  line: item.line,
-                  message: '行号必须为正整数'
-                })
-          )
-        });
-        if (wasRunning) {
-          const stop = this.internalStop;
-          this.internalStop = undefined;
-          if (stop && stop.reason !== 'pause') await this.onStopped(stop);
-          else {
-            await this.motion('continue');
-            if (previous === 'booting' && this.phase === 'running') this.phase = 'booting';
-          }
-        }
-        return;
-      }
 
       case 'continue':
         await this.motion('continue');
@@ -402,7 +376,8 @@ export class SourceDapAdapter implements DebugAdapter {
         return;
       case 'pause':
         this.trust();
-        if (this.runtime && ['running', 'booting'].includes(this.phase)) await this.runtime.execution.pause();
+        if (this.resources.backend && ['running', 'booting'].includes(this.phase))
+          await this.resources.backend.execution.pause();
         this.response(request);
         return;
 
@@ -439,14 +414,10 @@ export class SourceDapAdapter implements DebugAdapter {
 
   private async cleanup(): Promise<void> {
     ++this.epoch;
-    const runtime = this.runtime;
-    this.runtime = undefined;
-    const display = this.display;
-    this.display = undefined;
     this.values.clear();
     this.bindings.clear();
     this.lastDataHit = undefined;
-    await Promise.all([runtime?.dispose(), display?.dispose(), this.options.builder.stop()]);
+    await releaseAll([() => this.resources.release(), () => this.options.builder.stop()]);
   }
   private finish(): Promise<void> {
     if (this.finishing) return this.finishing;

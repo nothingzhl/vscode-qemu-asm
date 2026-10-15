@@ -1,17 +1,15 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { RunSession } from './application/runSession';
 import { createDebugAdapter } from './composition/createAdapter';
 import { createRunMachine } from './composition/sessionServices';
 import { DisplayController } from './display/controller';
-import { InspectorProvider } from './inspector/provider';
+import { compileProject } from './integration/vscode/build';
 import { DependencyReports } from './integration/vscode/dependencyReports';
 import { createDisplaySession } from './integration/vscode/displaySession';
+import { createExample } from './integration/vscode/examples';
+import { registerInspector } from './integration/vscode/inspector';
 import { selectWorkspace as folder, readProject as project } from './integration/vscode/projects';
 import { Processes } from './platform/processes';
-import { build } from './project/build';
-import { createProject } from './project/create';
-import { parseErrors } from './project/diagnostics';
 import { Project } from './project/model';
 
 let processes: Processes | undefined;
@@ -36,23 +34,8 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!vscode.workspace.isTrusted) throw new Error('请先信任此工作区，才可执行工具或创建项目。');
   };
   const display = (displays = new DisplayController(context, trusted, (text) => output.append(text)));
-  const inspector = new InspectorProvider(context);
+  registerInspector(context);
   const runSession = (runs = new RunSession());
-  context.subscriptions.push(
-    inspector,
-    vscode.window.registerWebviewViewProvider('qemuAsm.inspector', inspector, {
-      webviewOptions: { retainContextWhenHidden: true }
-    }),
-    vscode.debug.registerDebugAdapterTrackerFactory('qemu-asm', {
-      createDebugAdapterTracker: (session) => inspector.createDebugAdapterTracker(session)
-    }),
-    vscode.commands.registerCommand('qemuAsm.showInspector', () =>
-      vscode.commands.executeCommand('qemuAsm.inspector.focus')
-    ),
-    vscode.commands.registerCommand('qemuAsm.showDisassembly', () => inspector.show('disassembly')),
-    vscode.commands.registerCommand('qemuAsm.showDataBreakpoints', () => inspector.show('watchpoints')),
-    vscode.commands.registerCommand('qemuAsm.showPaging', () => inspector.show('paging'))
-  );
   async function stop(): Promise<void> {
     generation++;
     await Promise.all([
@@ -65,36 +48,8 @@ export function activate(context: vscode.ExtensionContext): void {
     state('已停止');
   }
   async function compile(p: Project, token: number): Promise<void> {
-    diagnostics.clear();
     state('构建中');
-    let text = '';
-    try {
-      await build(
-        p,
-        runner,
-        (chunk) => {
-          output.append(chunk);
-          text += chunk;
-        },
-        () => token !== generation
-      );
-    } finally {
-      for (const error of parseErrors(text, p.root)) {
-        const uri = vscode.Uri.file(error.file);
-        const previous = diagnostics.get(uri) ?? [];
-        diagnostics.set(uri, [
-          ...previous,
-          new vscode.Diagnostic(
-            new vscode.Range(error.line, 0, error.line, 1),
-            error.message,
-            error.message.startsWith('warning:')
-              ? vscode.DiagnosticSeverity.Warning
-              : vscode.DiagnosticSeverity.Error
-          )
-        ]);
-      }
-    }
-    output.appendLine(`构建成功：${p.image}`);
+    await compileProject(p, runner, output, diagnostics, () => token !== generation);
   }
   function register(name: string, action: () => Promise<unknown>, exclusive = true): void {
     context.subscriptions.push(
@@ -127,34 +82,8 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.workspace.getConfiguration('qemuAsm', selected?.uri).get<string>('displayMode', 'auto') !== 'off'
     );
   }
-  async function createExample(template: 'boot' | 'protected'): Promise<void> {
-    const selected = await folder();
-    const dirs = await vscode.window.showOpenDialog({
-      canSelectFiles: false,
-      canSelectFolders: true,
-      canSelectMany: false,
-      defaultUri: selected.uri,
-      openLabel: '在此目录创建示例'
-    });
-    if (!dirs?.[0]) return;
-    if (dirs[0].scheme !== 'file') throw new Error('仅支持本地目录');
-    trusted();
-    await createProject(dirs[0].fsPath, template);
-    const relative = path.relative(selected.uri.fsPath, dirs[0].fsPath) || '.';
-    await vscode.workspace
-      .getConfiguration('qemuAsm', selected.uri)
-      .update('projectDirectory', relative, vscode.ConfigurationTarget.WorkspaceFolder);
-    await vscode.window.showTextDocument(
-      vscode.Uri.file(path.join(dirs[0].fsPath, template === 'protected' ? 'stage2.asm' : 'boot.asm'))
-    );
-    void vscode.window.showInformationMessage(
-      template === 'protected'
-        ? '二阶段保护模式示例已创建，可设置断点后执行“开始引导调试”。'
-        : '引导示例已创建，可执行“构建并运行”。'
-    );
-  }
-  register('createProject', () => createExample('boot'));
-  register('createProtectedProject', () => createExample('protected'));
+  register('createProject', () => createExample('boot', trusted));
+  register('createProtectedProject', () => createExample('protected', trusted));
   register('build', async () => {
     await stop();
     const token = generation;

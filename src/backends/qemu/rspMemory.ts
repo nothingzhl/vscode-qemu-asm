@@ -1,5 +1,5 @@
-import type { RspClient } from '../../debug/rsp';
 import type { CapabilityRecorder } from '../../ports/machine';
+import type { RspClient } from '../rsp/client';
 import { expectOK, validateAddress } from './rspValidation';
 export class RspMemory {
   constructor(

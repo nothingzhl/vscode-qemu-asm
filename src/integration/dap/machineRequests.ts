@@ -1,4 +1,4 @@
-import { MachineBreakpoints } from '../../debug/machineBreakpoints';
+import { MachineBreakpoints } from '../../application/machine/breakpoints';
 import type { DataWatchpoint } from '../../ports/machine';
 import type { Request, Respond } from './protocol';
 export interface MachineBreakpointAccess {

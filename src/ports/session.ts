@@ -1,7 +1,8 @@
 import type { Project } from '../project/model';
+import type { AssemblySourceLoader } from './assembly';
 import type { ProjectBuilder } from './build';
 import type { InstructionDecoder } from './instructions';
-import type { SessionLifecycle } from './machine';
+import type { AssemblyBackend, SessionLifecycle } from './machine';
 import type { DebugDisplay } from './presentation';
 
 export interface SessionResources<Backend extends SessionLifecycle> {
@@ -15,4 +16,8 @@ export interface SessionOptions<Backend extends SessionLifecycle> {
   builder: ProjectBuilder;
   decoder: InstructionDecoder;
   createResources: (project: Project, log: (text: string) => void) => Promise<SessionResources<Backend>>;
+}
+
+export interface AssemblySessionOptions extends SessionOptions<AssemblyBackend> {
+  readonly sources: AssemblySourceLoader;
 }
