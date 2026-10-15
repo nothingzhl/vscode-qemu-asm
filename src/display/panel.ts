@@ -61,7 +61,7 @@ export class DisplayPanel implements vscode.Disposable {
   show(): void {
     if (this.disposed) return;
     if (this.panel) {
-      this.panel.reveal(this.panel.viewColumn ?? vscode.ViewColumn.Two, true);
+      this.panel.reveal(vscode.ViewColumn.Two, true);
       return;
     }
     const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');

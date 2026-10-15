@@ -77,7 +77,150 @@ message db '${MARKER}', 13, 10, 0
 times 510-($-$$) db 0
 dw 0xaa55
 `;
-export interface Project { workspace: string; root: string; source: string; image: string; nasm: string; qemu: string; qemuArgs: string[] }
+export const PROTECTED_MARKER = 'PROTECTED_MODE_OK';
+export const protectedBootExample = `bits 16
+org 0x7c00
+; BIOS 只装入本扇区；构建器把 stage2 放在 LBA 1，并给出扇区数。
+cli
+xor ax, ax
+mov ds, ax
+mov es, ax
+mov ss, ax
+mov sp, 0x7c00
+cld
+mov [boot_drive], dl
+mov ax, 0x0003
+int 0x10
+sti
+mov bx, 0x8000
+mov ah, 0x02
+mov al, STAGE2_SECTORS
+mov ch, 0
+mov cl, 2
+mov dh, 0
+mov dl, [boot_drive]
+int 0x13
+jc disk_error
+cli
+jmp 0x0000:0x8000
+disk_error:
+cli
+hlt
+jmp disk_error
+boot_drive db 0
+times 510-($-$$) db 0
+dw 0xaa55
+`;
+export const protectedStageExample = `bits 16
+org 0x8000
+cli
+xor ax, ax
+mov ds, ax
+cld
+; COM1 初始化后可以在无界面集成验证中观察保护模式成功标记。
+mov dx, 0x3f9
+xor al, al
+out dx, al
+mov dx, 0x3fb
+mov al, 0x80
+out dx, al
+mov dx, 0x3f8
+mov al, 1
+out dx, al
+mov dx, 0x3f9
+xor al, al
+out dx, al
+mov dx, 0x3fb
+mov al, 3
+out dx, al
+mov dx, 0x3fa
+mov al, 0xc7
+out dx, al
+mov dx, 0x3fc
+mov al, 0x0b
+out dx, al
+lgdt [gdt_descriptor]
+mov eax, cr0
+or eax, 1
+mov cr0, eax
+jmp 0x08:protected_entry
+
+align 8
+gdt:
+dq 0
+; 平坦 32 位代码段与数据段，base=0、limit=4GB。
+dq 0x00cf9a000000ffff
+dq 0x00cf92000000ffff
+gdt_end:
+gdt_descriptor:
+dw gdt_end-gdt-1
+dd gdt
+
+bits 32
+protected_entry:
+mov ax, 0x10
+mov ds, ax
+mov es, ax
+mov fs, ax
+mov gs, ax
+mov ss, ax
+mov esp, 0x90000
+xor ebp, ebp
+mov esi, message
+mov edi, 0xb8000
+print_next:
+lodsb
+test al, al
+jz print_done
+mov ah, 0x0a
+mov [edi], ax
+add edi, 2
+mov bl, al
+serial_wait:
+mov dx, 0x3fd
+in al, dx
+test al, 0x20
+jz serial_wait
+mov dx, 0x3f8
+mov al, bl
+out dx, al
+jmp print_next
+print_done:
+call learning_entry
+after_call:
+idle:
+hlt
+jmp idle
+
+; 在下面两个函数里设置断点，观察 EAX、ESP、EBP 与返回地址。
+learning_entry:
+push ebp
+mov ebp, esp
+mov eax, 0x11223344
+push eax
+call learning_nested
+add esp, 4
+pop ebp
+ret
+protected_worker:
+learning_nested:
+push ebp
+mov ebp, esp
+mov ebx, [ebp+8]
+learning_breakpoint:
+nop
+pop ebp
+ret
+; 成功字符串位于第二个扇区，真实引导验证必须读到它。
+times 768-($-$$) db 0
+message db '${PROTECTED_MARKER}', 13, 10, 0
+; 二阶段刻意超过 512B，验证从磁盘读取多个扇区。
+times 1024-($-$$) db 0
+`;
+export interface Stage { source: string; loadAddress: number; lba: number }
+export interface BuildUnit extends Stage { size: number; listingPath?: string }
+export interface BuildResult { units: BuildUnit[]; imageBytes: number }
+export interface Project { workspace: string; root: string; source: string; image: string; stages: Stage[]; nasm: string; qemu: string; qemuArgs: string[] }
 function string(value: unknown, fallback: string): string {
   if (value === undefined) return fallback;
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) throw new Error('配置必须是非空路径字符串');
@@ -103,16 +246,28 @@ export function resolveProject(workspace: string, projectDir: unknown, data: unk
   if (args.length % 2 || args.some((a, i) => i % 2 === 0 ? !allowed.has(a) : a.startsWith('-') || !a.trim())) throw new Error('qemuArgs 仅支持 -m、-cpu、-smp 的选项/值对');
   const source = path.resolve(root, configuredPath(config.source, 'boot.asm'));
   const image = path.resolve(root, configuredPath(config.image, 'build/boot.img'));
+  if (config.stages !== undefined && (!Array.isArray(config.stages) || config.stages.length > 8)) throw new Error('stages 必须为最多 8 段的数组');
+  const stages: Stage[] = (config.stages as unknown[] | undefined ?? []).map(value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('stage 必须包含 source、loadAddress 与 lba');
+    const stage = value as Record<string, unknown>;
+    if (typeof stage.source !== 'string') throw new Error('stage 必须指定 source');
+    if (!Number.isInteger(stage.loadAddress) || Number(stage.loadAddress) < 0x8000 || Number(stage.loadAddress) > 0x9ffff) throw new Error('stage loadAddress 必须为 0x8000..0x9ffff 的整数');
+    if (!Number.isInteger(stage.lba) || Number(stage.lba) < 1 || Number(stage.lba) > 17) throw new Error('首版 stage lba 必须为 1..17（引导磁道剩余扇区）');
+    return { source: path.resolve(root, configuredPath(stage.source, '')), loadAddress: Number(stage.loadAddress), lba: Number(stage.lba) };
+  });
   const relativeImage = path.relative(root, image);
-  if (source === image || relativeImage === '..' || relativeImage.startsWith(`..${path.sep}`) || path.isAbsolute(relativeImage)) throw new Error('镜像必须位于项目内且不能覆盖源码');
+  if ([source, ...stages.map(stage => stage.source)].includes(image) || relativeImage === '..' || relativeImage.startsWith(`..${path.sep}`) || path.isAbsolute(relativeImage)) throw new Error('镜像必须位于项目内且不能覆盖源码');
   if (image === path.join(root, 'qemu-asm.json')) throw new Error('镜像不能覆盖项目配置');
-  return { workspace, root, source, image, nasm: tool(tools.nasm, 'nasm'), qemu: tool(tools.qemu, 'qemu-system-i386'), qemuArgs: [...args] };
+  return { workspace, root, source, image, stages, nasm: tool(tools.nasm, 'nasm'), qemu: tool(tools.qemu, 'qemu-system-i386'), qemuArgs: [...args] };
 }
-export async function createProject(root: string): Promise<void> {
+export async function createProject(root: string, template: 'boot' | 'protected' = 'boot'): Promise<void> {
   await fs.mkdir(root, { recursive: true });
   const created: string[] = [];
+  const files: [string, string][] = template === 'protected'
+    ? [['boot.asm', protectedBootExample], ['stage2.asm', protectedStageExample], ['qemu-asm.json', JSON.stringify({ source: 'boot.asm', image: 'build/boot.img', stages: [{ source: 'stage2.asm', loadAddress: 0x8000, lba: 1 }] }, null, 2) + '\n']]
+    : [['boot.asm', example], ['qemu-asm.json', JSON.stringify({ source: 'boot.asm', image: 'build/boot.img' }, null, 2) + '\n']];
   try {
-    for (const [name, body] of [['boot.asm', example], ['qemu-asm.json', JSON.stringify({ source: 'boot.asm', image: 'build/boot.img' }, null, 2) + '\n']]) {
+    for (const [name, body] of files) {
       const target = path.join(root, name);
       await fs.writeFile(target, body, { flag: 'wx' });
       created.push(target);
@@ -160,7 +315,7 @@ export async function execute(processes: Processes, command: string, args: strin
   catch (error) { if (expired) throw new Error(`${command} 执行超时`); throw error; }
   finally { clearTimeout(timer); }
 }
-export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false, listingPath?: string): Promise<void> {
+export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false, listingPath?: string): Promise<BuildResult> {
   const check = () => { if (cancelled()) throw new Error('构建已停止'); };
   check();
   await fs.mkdir(path.dirname(project.image), { recursive: true });
@@ -173,20 +328,56 @@ export async function build(project: Project, processes: Processes, log: (text: 
     try { return await fs.stat(file, { bigint: true }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
   };
-  const [imageInfo, sourceInfo, configInfo] = await Promise.all([project.image, project.source, path.join(project.root, 'qemu-asm.json')].map(statIfExists));
-  if (imageInfo && [sourceInfo, configInfo].some(info => info && imageInfo.dev === info.dev && imageInfo.ino === info.ino)) throw new Error('镜像与源码或项目配置指向同一文件，已取消构建');
+  const sources = [project.source, ...project.stages.map(stage => stage.source)];
+  const protectedPaths = [...sources, path.join(project.root, 'qemu-asm.json')];
+  const protectedInfos = await Promise.all(protectedPaths.map(statIfExists));
+  const outputs = [project.image, ...(listingPath ? [listingPath, ...project.stages.map((_, index) => `${listingPath}.stage${index + 1}.lst`)] : [])];
+  const outputInfos = await Promise.all(outputs.map(statIfExists));
+  const sameFile = (a: Awaited<ReturnType<typeof statIfExists>>, b: Awaited<ReturnType<typeof statIfExists>>) => a && b && a.dev === b.dev && a.ino === b.ino;
+  for (let index = 0; index < outputs.length; index++) {
+    if (protectedPaths.some((file, i) => path.resolve(outputs[index]) === path.resolve(file) || sameFile(outputInfos[index], protectedInfos[i]))) throw new Error('输出与源码或项目配置指向同一文件，已取消构建');
+    if (outputs.slice(0, index).some((file, i) => path.resolve(file) === path.resolve(outputs[index]) || sameFile(outputInfos[index], outputInfos[i]))) throw new Error('镜像与 listing 输出不能指向同一文件');
+  }
   check();
   // Never accept an earlier artifact after a failed build. Use an exclusive temporary directory.
   await fs.rm(project.image, { force: true });
   const temp = await fs.mkdtemp(path.join(path.dirname(project.image), '.qemu-asm-'));
   try {
     const output = path.join(temp, 'boot.img');
+    const stageBuffers: Buffer[] = [];
+    const stageUnits: BuildUnit[] = [];
+    for (let index = 0; index < project.stages.length; index++) {
+      check();
+      const stage = project.stages[index];
+      const stageOutput = path.join(temp, `stage${index + 1}.bin`);
+      const stageListing = listingPath ? `${listingPath}.stage${index + 1}.lst` : undefined;
+      await execute(processes, project.nasm, ['-f', 'bin', stage.source, '-o', stageOutput, ...(stageListing ? ['-l', stageListing] : [])], project.root, log);
+      const bytes = await fs.readFile(stageOutput);
+      const sectors = Math.ceil(bytes.length / 512);
+      if (!sectors || stage.lba + sectors > 18) throw new Error('stage 必须非空，且补齐扇区后全部位于 LBA 1..17（最多 8704 字节）');
+      if (stage.loadAddress + sectors * 512 > 0xa0000) throw new Error('stage 装载范围不能超出 0x9ffff 常规内存');
+      for (const previous of stageUnits) {
+        const previousBytes = Math.ceil(previous.size / 512) * 512;
+        if (stage.lba * 512 < previous.lba * 512 + previousBytes && previous.lba * 512 < stage.lba * 512 + sectors * 512) throw new Error('stage 在镜像中的扇区范围不能重叠');
+        if (stage.loadAddress < previous.loadAddress + previousBytes && previous.loadAddress < stage.loadAddress + sectors * 512) throw new Error('stage 装载后的内存范围不能重叠');
+      }
+      stageBuffers.push(bytes);
+      stageUnits.push({ ...stage, size: bytes.length, ...(stageListing ? { listingPath: stageListing } : {}) });
+    }
     check();
-    await execute(processes, project.nasm, ['-f', 'bin', project.source, '-o', output, ...(listingPath ? ['-l', listingPath] : [])], project.root, log);
+    await execute(processes, project.nasm, ['-f', 'bin', project.source, '-o', output, ...(listingPath ? ['-l', listingPath] : []), ...(stageUnits.length ? ['-D', `STAGE2_SECTORS=${Math.ceil(stageUnits[0].size / 512)}`] : [])], project.root, log);
     const bytes = await fs.readFile(output);
     if (bytes.length !== 512 || bytes[510] !== 0x55 || bytes[511] !== 0xaa) throw new Error('引导镜像必须为 512 字节并以 55 aa 结尾');
+    const imageBytes = stageUnits.length ? 1474560 : 512;
+    if (stageUnits.length) {
+      const image = Buffer.alloc(imageBytes);
+      bytes.copy(image);
+      stageBuffers.forEach((stage, index) => stage.copy(image, stageUnits[index].lba * 512));
+      await fs.writeFile(output, image);
+    }
     check();
     await fs.rename(output, project.image);
+    return { units: [{ source: project.source, loadAddress: 0x7c00, lba: 0, size: bytes.length, ...(listingPath ? { listingPath } : {}) }, ...stageUnits], imageBytes };
   } finally { await fs.rm(temp, { recursive: true, force: true }); }
 }
 export function qemuArguments(project: Project): string[] {

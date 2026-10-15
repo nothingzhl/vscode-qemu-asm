@@ -52,6 +52,14 @@ jobs:
         run: npm run test:display 2>&1 | tee display-integration.log
         shell: bash
         timeout-minutes: 2
+      - name: Test multi-stage image build and boot
+        run: npm run test:stage 2>&1 | tee stage-integration.log
+        shell: bash
+        timeout-minutes: 2
+      - name: Test real QEMU protected-mode debugger
+        run: npm run test:protected 2>&1 | tee protected-integration.log
+        shell: bash
+        timeout-minutes: 3
       - name: Test Linux VS Code commands and debugger
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
@@ -69,5 +77,7 @@ jobs:
             integration.log
             debug-integration.log
             display-integration.log
+            stage-integration.log
+            protected-integration.log
             host-test.log
           if-no-files-found: ignore

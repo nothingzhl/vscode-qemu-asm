@@ -4,7 +4,7 @@ const path = require('node:path');
 const vscode = require('vscode');
 const core = require('../../dist/core');
 
-const commands = ['checkEnvironment', 'createProject', 'build', 'run', 'stop', 'debug'].map(name => `qemuAsm.${name}`);
+const commands = ['checkEnvironment', 'createProject', 'createProtectedProject', 'build', 'run', 'stop', 'debug'].map(name => `qemuAsm.${name}`);
 const root = process.env.QEMU_ASM_HOST_ROOT;
 
 async function until(predicate, description, timeout = 15000) {
@@ -123,6 +123,7 @@ async function resources() {
 }
 
 exports.run = async function() {
+  if (process.env.QEMU_ASM_HOST_PHASE === 'protected') { await require('./protected.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'display') { await require('./display.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'debug') { await require('./debug.cjs').run(); return; }
   const observed = observeProcesses();

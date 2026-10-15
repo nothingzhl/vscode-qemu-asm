@@ -1,19 +1,36 @@
-/** A single executable source line, with its physical real-mode address. */
+/** A single executable source line, with its fixed linear load address. */
 export interface SourceEntry {
   readonly line: number;
   readonly address: number;
   readonly size: number;
   readonly text: string;
+  /** Legacy manually constructed maps omit this and mean 16-bit code. */
+  readonly bits?: 16 | 32;
 }
 
-/** NASM's bin listing offsets become physical addresses at the boot load address. */
+/** NASM's bin listing offsets become addresses at the configured load address. */
 export class SourceMap {
   readonly entries: readonly SourceEntry[];
+  /** The complete image span, including data and padding with no source mapping. */
+  readonly byteLength: number;
   private readonly lines = new Map<number, SourceEntry>();
 
-  constructor(readonly sourcePath: string, readonly origin: number, entries: readonly SourceEntry[]) {
+  constructor(readonly sourcePath: string, readonly origin: number, entries: readonly SourceEntry[], byteLength?: number) {
     this.entries = entries.map(entry => Object.freeze({ ...entry })).sort((a, b) => a.address - b.address);
-    for (const entry of this.entries) this.lines.set(entry.line, entry);
+    this.byteLength = byteLength ?? this.entries.reduce((size, entry) => Math.max(size, entry.address + entry.size - origin), 0);
+    if (!Number.isSafeInteger(origin) || origin < 0 || origin > 0xffffffff ||
+        !Number.isSafeInteger(this.byteLength) || this.byteLength < 0 || origin + this.byteLength > 0x100000000) {
+      throw new Error('源码映射的加载地址或镜像跨度超出 32 位地址范围');
+    }
+    let previousEnd = origin;
+    for (const entry of this.entries) {
+      if (!Number.isSafeInteger(entry.address) || !Number.isSafeInteger(entry.size) || entry.size <= 0 ||
+          entry.address < previousEnd || entry.address + entry.size > origin + this.byteLength) {
+        throw new Error('源码映射的指令范围重叠或超出镜像跨度');
+      }
+      previousEnd = entry.address + entry.size;
+      this.lines.set(entry.line, entry);
+    }
   }
 
   /** Labels, comments and data never silently move a breakpoint onto another line. */
@@ -109,10 +126,14 @@ function statement(text: string): string {
   return text;
 }
 
-function inspectSource(lines: string[]): { kinds: LineKind[]; origin: number } {
+function inspectSource(lines: string[], loadAddress: number, initialBits: 16 | 32 | 'auto'): { kinds: LineKind[]; origin: number; modes: (16 | 32)[] } {
   let origin: number | undefined;
   let hasBits = false;
+  let bits: 16 | 32 | undefined = initialBits === 'auto' ? undefined : initialBits;
+  const modes: (16 | 32)[] = [];
   const kinds = lines.map((text, index): LineKind => {
+    // Lines before the first BITS may contain only directives, labels or data.
+    modes.push(bits ?? 16);
     const line = index + 1;
     let code = codeWithoutComment(text, line);
     if (!code) return 'other';
@@ -124,10 +145,14 @@ function inspectSource(lines: string[]): { kinds: LineKind[]; origin: number } {
     if (directive) {
       const value = constant(directive[2].trim(), line);
       if (directive[1].toLowerCase() === 'bits') {
-        if (hasBits || value !== 16) fail('首版调试要求唯一的 BITS 16 声明', line);
+        if (value !== 16 && value !== 32) fail('调试只支持 BITS 16 和 BITS 32，不支持 64 位代码', line);
+        if (!hasBits && initialBits !== 'auto' && value !== initialBits) fail(`调试要求先显式声明 BITS ${initialBits}，再切换代码模式`, line);
+        bits = value;
         hasBits = true;
       } else {
-        if (origin !== undefined || value !== 0x7c00) fail('首版调试要求唯一的 ORG 0x7c00，与 BIOS 引导加载地址一致', line);
+        if (origin !== undefined || value !== loadAddress) {
+          fail(`调试要求唯一的 ORG 0x${loadAddress.toString(16)}，与配置的加载地址一致`, line);
+        }
         origin = value;
       }
       return 'other';
@@ -149,11 +174,14 @@ function inspectSource(lines: string[]): { kinds: LineKind[]; origin: number } {
       mnemonic = code.split(/\s/, 1)[0].toLowerCase();
       if (!mnemonic) fail('指令前缀必须与指令写在同一行', line);
     }
-    if (instructions.has(mnemonic)) return 'instruction';
-    fail(`首版调试不支持语句“${mnemonic}”；请使用单文件 BITS 16 引导源码，不使用 section、incbin 或宏`, line);
+    if (instructions.has(mnemonic)) {
+      if (bits === undefined) fail('自动识别代码模式要求在首条可执行指令之前显式声明 BITS 16 或 BITS 32', line);
+      return 'instruction';
+    }
+    fail(`调试不支持语句“${mnemonic}”；每个加载阶段须独立编译，不使用 section、incbin、include 或宏`, line);
   });
-  if (!hasBits || origin === undefined) fail('首版调试要求显式 BITS 16 和 ORG 0x7c00');
-  return { kinds, origin };
+  if (!hasBits || origin === undefined) fail(`调试要求显式 ${initialBits === 'auto' ? 'BITS 16 或 BITS 32' : `BITS ${initialBits}`} 和 ORG 0x${loadAddress.toString(16)}`);
+  return { kinds, origin, modes };
 }
 
 function listingSize(field: string, line: number): number {
@@ -174,13 +202,21 @@ function listingSize(field: string, line: number): number {
 }
 
 /**
- * Parse an actual NASM `-f bin -l` listing. This first debugger intentionally
- * rejects preprocessing and mode/section changes instead of inventing mappings.
+ * Parse an actual NASM `-f bin -l` listing, retaining each instruction's effective
+ * 16/32-bit mode. Every stage is a fixed-address flat binary: sections, includes
+ * and macro expansion are rejected instead of inventing relocated mappings.
  */
-export function parseListing(listing: string, sourcePath: string, sourceText: string): SourceMap {
+export function parseListing(listing: string, sourcePath: string, sourceText: string,
+  options: { loadAddress?: number; maxBytes?: number; initialBits?: 16 | 32 | 'auto' } = {}): SourceMap {
+  const loadAddress = options.loadAddress ?? 0x7c00;
+  const maxBytes = options.maxBytes ?? 512;
+  const initialBits = options.initialBits ?? 16;
+  if (!Number.isSafeInteger(loadAddress) || loadAddress < 0 || loadAddress > 0xffffffff) fail('加载地址必须是 32 位无符号整数');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || maxBytes > 0x100000000) fail('镜像长度上限必须是有效的 32 位地址跨度');
+  if (initialBits !== 16 && initialBits !== 32 && initialBits !== 'auto') fail('初始代码模式必须是 BITS 16、BITS 32 或 auto');
   const lines = sourceText.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n');
   if (lines.at(-1) === '') lines.pop();
-  const { kinds, origin } = inspectSource(lines);
+  const { kinds, origin, modes } = inspectSource(lines, loadAddress, initialBits);
   const seenSource = new Set<number>();
   const entries = new Map<number, SourceEntry>();
   let previousEnd = 0;
@@ -207,14 +243,15 @@ export function parseListing(listing: string, sourcePath: string, sourceText: st
     const size = listingSize(field, line);
     if (offset !== previousEnd) fail('listing 地址重复或不连续，无法可靠映射', line);
     previousEnd = offset + size;
-    if (!Number.isSafeInteger(previousEnd) || origin + previousEnd > 0x10000) fail('首版调试不支持跨越 16 位地址边界的镜像', line);
+    if (!Number.isSafeInteger(previousEnd) || previousEnd > maxBytes) fail(`镜像超出配置的 ${maxBytes} 字节长度上限`, line);
+    if (origin + previousEnd > 0x100000000) fail('镜像超出 32 位地址范围', line);
     if (kinds[line - 1] === 'other') fail('非指令语句产生了机器码，首版无法可靠映射', line);
     if (kinds[line - 1] !== 'instruction') continue;
     const existing = entries.get(line);
     if (existing) {
       if (existing.address + existing.size !== origin + offset) fail('同一源码行的机器码不连续', line);
       entries.set(line, { ...existing, size: existing.size + size });
-    } else entries.set(line, { line, address: origin + offset, size, text: lines[line - 1] });
+    } else entries.set(line, { line, address: origin + offset, size, text: lines[line - 1], bits: modes[line - 1] });
     if ((entries.get(line)?.size ?? 0) > 15) fail('一行对应超过一条 x86 指令，不能设置可靠断点', line);
   }
   for (let i = 0; i < lines.length; i++) {
@@ -222,5 +259,5 @@ export function parseListing(listing: string, sourcePath: string, sourceText: st
     if (kinds[i] === 'instruction' && !entries.has(i + 1)) fail('指令缺少机器码，无法可靠映射', i + 1);
   }
   if (!entries.size) fail('源文件中没有可调试指令');
-  return new SourceMap(sourcePath, origin, [...entries.values()]);
+  return new SourceMap(sourcePath, origin, [...entries.values()], previousEnd);
 }

@@ -99,3 +99,71 @@ test('unexpected process termination reports failure, while plugin stop remains 
  const run=runner.start(process.execPath,['-e','setInterval(()=>{},1000)'],root,()=>{}); await run.ready;
  run.child.kill('SIGTERM'); await assert.rejects(run.done,/信号|退出码/);
 });
+test('stage configuration validates bounded addresses, sectors and protected output paths', () => {
+ const stage={source:'stage2.asm',loadAddress:0x8000,lba:1};
+ const p=resolveProject('/work','.',{stages:[stage]});
+ assert.deepEqual(p.stages,[{...stage,source:path.resolve('/work','stage2.asm')}]);
+ assert.deepEqual(resolveProject('/work','.',{}).stages,[]);
+ for(const stages of [null,{},Array(9).fill(stage),[null],[{}],[{...stage,source:''}],[{...stage,source:'C:stage2.asm'}],[{...stage,loadAddress:0x7fff}],[{...stage,loadAddress:0xa0000}],[{...stage,loadAddress:0x8000+.5}],[{...stage,lba:0}],[{...stage,lba:18}],[{...stage,lba:1.5}]]) assert.throws(()=>resolveProject('/work','.',{stages}));
+ assert.throws(()=>resolveProject('/work','.',{stages:[stage],image:'stage2.asm'}),/不能覆盖源码/);
+});
+test('protected project preserves an existing stage and rolls back its boot source', async t => {
+ const root=await temporary(t); await fs.writeFile(path.join(root,'stage2.asm'),'my stage');
+ await assert.rejects(createProject(root,'protected'));
+ assert.equal(await fs.readFile(path.join(root,'stage2.asm'),'utf8'),'my stage');
+ await assert.rejects(fs.stat(path.join(root,'boot.asm'))); await assert.rejects(fs.stat(path.join(root,'qemu-asm.json')));
+ await fs.rm(path.join(root,'stage2.asm')); await createProject(root,'protected');
+ const config=JSON.parse(await fs.readFile(path.join(root,'qemu-asm.json'),'utf8'));
+ assert.deepEqual(config.stages,[{source:'stage2.asm',loadAddress:0x8000,lba:1}]);
+ assert.match(await fs.readFile(path.join(root,'stage2.asm'),'utf8'),/bits 32[\s\S]*PROTECTED_MODE_OK/);
+});
+// A deterministic process stub supplies binary fixtures; real NASM/QEMU validation lives in stage-build-integration.cjs.
+function binaryCompiler(calls=[]) {
+ return { start(_command,args) {
+  calls.push(args);
+  const done=(async()=>{ await fs.copyFile(args[2],args[args.indexOf('-o')+1]); const listing=args.indexOf('-l'); if(listing>=0)await fs.writeFile(args[listing+1],'fixture listing'); })();
+  return {child:{kill(){}},ready:Promise.resolve(),done};
+ }};
+}
+async function stagedFixture(t,stageData=[Buffer.alloc(513,0x31),Buffer.from([0x32])],overrides=[]) {
+ const root=await temporary(t); const boot=Buffer.alloc(512); boot[510]=0x55;boot[511]=0xaa;
+ await fs.writeFile(path.join(root,'boot.asm'),boot);
+ const stages=[];
+ for(let i=0;i<stageData.length;i++) { const source=`stage${i+1}.asm`; await fs.writeFile(path.join(root,source),stageData[i]); stages.push({source,loadAddress:0x8000+i*0x1000,lba:1+i*3,...overrides[i]}); }
+ return resolveProject(root,'.',{stages});
+}
+test('stage build orders stages before boot, pads disk sectors and returns source units', async t => {
+ const project=await stagedFixture(t); const calls=[]; const listing=path.join(project.root,'boot.lst');
+ const result=await build(project,binaryCompiler(calls),()=>{},()=>false,listing);
+ assert.equal(result.imageBytes,1474560); assert.deepEqual(result.units.map(unit=>unit.size),[512,513,1]);
+ assert.deepEqual(result.units.map(unit=>unit.loadAddress),[0x7c00,0x8000,0x9000]);
+ assert.deepEqual(result.units.map(unit=>unit.listingPath),[listing,`${listing}.stage1.lst`,`${listing}.stage2.lst`]);
+ assert.deepEqual(calls.map(args=>args[2]),[...project.stages.map(stage=>stage.source),project.source]);
+ assert.deepEqual(calls[2].slice(-2),['-D','STAGE2_SECTORS=2']);
+ const image=await fs.readFile(project.image); assert.equal(image.length,1474560);
+ assert.equal(image.subarray(510,512).toString('hex'),'55aa'); assert(image.subarray(512,1025).every(byte=>byte===0x31));
+ assert(image.subarray(1025,2048).every(byte=>byte===0)); assert.equal(image[2048],0x32); assert(image.subarray(2049).every(byte=>byte===0));
+});
+test('stage size, disk overlap and memory overlap failures invalidate old images', async t => {
+ const cases=[
+  [[Buffer.alloc(0)],[],/非空/],
+  [[Buffer.alloc(513)],[{lba:17}],/LBA 1\.\.17/],
+  [[Buffer.alloc(512)],[{loadAddress:0x9ff00}],/常规内存/],
+  [[Buffer.alloc(513),Buffer.alloc(1)],[{}, {lba:2}],/扇区范围不能重叠/],
+  [[Buffer.alloc(513),Buffer.alloc(1)],[{}, {loadAddress:0x8200}],/内存范围不能重叠/]
+ ];
+ for(const [buffers,overrides,message]of cases) {
+  const project=await stagedFixture(t,buffers,overrides); await fs.mkdir(path.dirname(project.image)); await fs.writeFile(project.image,'stale');
+  await assert.rejects(build(project,binaryCompiler(),()=>{}),message); await assert.rejects(fs.stat(project.image));
+  assert.deepEqual(await fs.readdir(path.dirname(project.image)),[]);
+ }
+});
+test('stage source hardlinks and listing aliases cannot be overwritten or deleted', async t => {
+ const project=await stagedFixture(t); await fs.mkdir(path.dirname(project.image));
+ await fs.link(project.stages[0].source,project.image);
+ await assert.rejects(build(project,binaryCompiler(),()=>{}),/同一文件/);
+ assert.equal((await fs.readFile(project.stages[0].source)).length,513);
+ await fs.unlink(project.image);
+ await assert.rejects(build(project,binaryCompiler(),()=>{},()=>false,project.stages[0].source),/同一文件/);
+ assert.equal((await fs.readFile(project.stages[0].source)).length,513);
+});
