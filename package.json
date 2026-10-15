@@ -2,7 +2,7 @@
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
   "description": "在 VS Code 中调试 x86 汇编与 C 内核，支持 ELF/DWARF 源码、变量、分页与 QEMU 显示器。",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -41,13 +41,19 @@
     "test:vsix:paging": "node scripts/vsix-paging-test.cjs",
     "test:c-source": "npm run compile && node scripts/c-source-integration.cjs",
     "test:c-source:ui": "npm run compile && node scripts/c-source-ui-test.cjs",
-    "test:vsix:c-source": "node scripts/vsix-c-source-test.cjs"
+    "test:vsix:c-source": "node scripts/vsix-c-source-test.cjs",
+    "test:dependencies": "npm run compile && node scripts/dependency-integration.cjs",
+    "test:vsix:dependencies": "node scripts/vsix-dependencies-test.cjs"
   },
   "contributes": {
     "commands": [
       {
         "command": "qemuAsm.checkEnvironment",
         "title": "QEMU Assembly: 检查环境"
+      },
+      {
+        "command": "qemuAsm.showDependencyReport",
+        "title": "QEMU Assembly: 打开依赖与能力报告"
       },
       {
         "command": "qemuAsm.createProject",
@@ -130,6 +136,16 @@
           "default": "gdb",
           "scope": "resource",
           "description": "C/ELF 源码调试使用的 GDB 可执行文件；相对路径以所选工作区为基准。NASM 调试不需要 GDB。"
+        },
+        "qemuAsm.displayMode": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "default": "auto",
+          "scope": "resource",
+          "description": "auto 自动创建模拟显示器，资源初始化失败时继续无显示调试；off 不分配显示器与 QMP 截图资源。"
         }
       }
     },

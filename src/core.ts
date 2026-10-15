@@ -1,4 +1,5 @@
-import { spawn, ChildProcess } from 'node:child_process';
+import { Processes, execute } from './platform/processes';
+export { Processes, execute } from './platform/processes';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -353,67 +354,6 @@ export async function createProject(root: string, template: 'boot' | 'protected'
       created.push(target);
     }
   } catch (error) { await Promise.all(created.map(p => fs.unlink(p))); throw error; }
-}
-export class Processes {
-  private children = new Set<ChildProcess>();
-  private stopping = new WeakSet<ChildProcess>();
-  private closed = false;
-  start(command: string, args: string[], cwd: string, log: (text: string) => void): { child: ChildProcess; ready: Promise<void>; done: Promise<void> } {
-    if (this.closed) throw new Error('插件正在退出');
-    // External builders such as make create descendants. A dedicated process group keeps
-    // stop/timeout restricted to our own launch while also terminating its compilers.
-    const child = spawn(command, args, { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    this.children.add(child);
-    // A leader may finish while an unref'ed compiler still runs, including with
-    // ignored stdio. Clean its group at exit, before forgetting the live PID.
-    child.once('exit', () => this.terminate(child, 'SIGKILL'));
-    child.stdout?.setEncoding('utf8').on('data', text => log(text));
-    child.stderr?.setEncoding('utf8').on('data', text => log(text));
-    const ready = new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-    const done = new Promise<void>((resolve, reject) => {
-      child.once('error', reject);
-      child.once('close', (code, signal) => {
-        this.children.delete(child);
-        if (code === 0 || this.stopping.has(child)) resolve();
-        else reject(new Error(signal ? `${command} 被信号 ${signal} 终止` : `${command} 退出码 ${code}`));
-      });
-    });
-    void done.catch(() => undefined);
-    return { child, ready, done };
-  }
-  terminate(child: ChildProcess, signal: 'SIGTERM' | 'SIGKILL'): void {
-    if (!this.children.has(child) || child.pid === undefined) return;
-    if (process.platform === 'win32') {
-      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
-      killer.once('error', () => child.kill(signal));
-      killer.once('exit', code => { if (code !== 0) child.kill(signal); });
-      return;
-    }
-    try { process.kill(-child.pid, signal); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') child.kill(signal); }
-  }
-  async stop(): Promise<void> {
-    await Promise.all([...this.children].map(child => new Promise<void>((resolve) => {
-      if (!this.children.has(child)) { resolve(); return; }
-      this.stopping.add(child);
-      const timer = setTimeout(() => this.terminate(child, 'SIGKILL'), 1500);
-      child.once('close', () => { clearTimeout(timer); resolve(); });
-      this.terminate(child, 'SIGTERM');
-    })));
-  }
-  async dispose(): Promise<void> { this.closed = true; await this.stop(); }
-}
-export async function execute(processes: Processes, command: string, args: string[], cwd: string, log: (text: string) => void, timeout = 15000, cancelled: () => boolean = () => false): Promise<void> {
-  if (cancelled()) throw new Error('构建已停止');
-  const run = processes.start(command, args, cwd, log);
-  let expired = false;
-  let stopped = false;
-  const terminate = () => { if (processes.terminate) processes.terminate(run.child, 'SIGKILL'); else run.child.kill('SIGKILL'); };
-  const timer = setTimeout(() => { expired = true; terminate(); }, timeout);
-  const cancellation = setInterval(() => { if (cancelled()) { stopped = true; terminate(); } }, 50);
-  try { await run.ready; await run.done; if (expired) throw new Error(`${command} 执行超时`); if (stopped || cancelled()) throw new Error('构建已停止'); }
-  catch (error) { if (expired) throw new Error(`${command} 执行超时`); if (stopped || cancelled()) throw new Error('构建已停止'); throw error; }
-  finally { clearTimeout(timer); clearInterval(cancellation); }
 }
 export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false, listingPath?: string): Promise<BuildResult> {
   const check = () => { if (cancelled()) throw new Error('构建已停止'); };

@@ -3,11 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const coreRequire = require('node:module').createRequire(path.join(__dirname,'../dist/core.js'));
 // Exercise the production resolver using Node's actual platform path implementations.
 // This validates path semantics; native process/filesystem behavior is tested separately in CI.
 function loadWithPath(platformPath) {
  const exports={};
- vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../dist/core.js'),'utf8'),{exports,require:name=>name==='node:path'?platformPath:require(name),setTimeout,clearTimeout});
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../dist/core.js'),'utf8'),{exports,require:name=>name==='node:path'?platformPath:coreRequire(name),setTimeout,clearTimeout});
  return exports;
 }
 for (const [platform, api, workspace, absoluteTool] of [

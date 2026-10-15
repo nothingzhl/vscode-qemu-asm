@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import type { DebugAdapter, DebugProtocolMessage, Disposable, Event } from 'vscode';
 import { build, Processes, Project } from '../core';
 import { AdapterOptions, DebugDisplay } from './adapter';
+import type { CapabilityLedger } from '../dependencies/capabilities';
 import { GdbRuntime } from './gdbRuntime';
 import { MiRecord, MiTuple, MiValue, miQuote } from './mi';
 import { inspectDescriptors, inspectMemory } from './inspection';
@@ -15,6 +16,7 @@ import { cpuMode, DataWatchpoint, instructionAddress, stackAddress, stackWidth, 
 interface Request { seq: number; command: string; arguments?: Record<string, unknown> }
 /** Narrow, replaceable transport boundary also used by protocol regression tests. */
 export interface CSourceRuntime {
+  readonly capabilities?: CapabilityLedger;
   on(event: string, listener: (...args: any[]) => void): unknown;
   launch(): Promise<void>;
   mi(command: string): Promise<MiRecord>;
@@ -158,6 +160,7 @@ export class CSourceDebugAdapter implements DebugAdapter {
     if (epoch !== this.epoch) { await display?.dispose(); throw new Error('调试启动已取消'); }
     this.trust();
     const runtime = this.runtime = this.options.runtimeFactory?.(project, text => this.output(text, 'stdout'), display?.args ?? []) ?? new GdbRuntime(project, text => this.output(text, 'stdout'), display?.args);
+    if (runtime.capabilities) display?.observeCapabilities?.(runtime.capabilities);
     runtime.on('stopped', (event: MiTuple) => {
       if (epoch !== this.epoch || this.phase === 'preparing' || this.phase === 'ended') return;
       if (this.internalPause) { this.internalStop = event; return; }
@@ -367,6 +370,10 @@ export class CSourceDebugAdapter implements DebugAdapter {
       case 'initialize': this.response(request, { supportsConfigurationDoneRequest: true, supportsReadMemoryRequest: true, supportsEvaluateForHovers: true, supportsTerminateRequest: true, supportsRestartRequest: true, supportsSetVariable: false, supportsDisassembleRequest: true, supportsInstructionBreakpoints: true, supportsDataBreakpoints: true, supportsSteppingGranularity: true, supportsVariablePaging: true }); return;
       case 'launch': await this.prepare(args); this.response(request); this.event('initialized'); return;
       case 'configurationDone': await this.boot(); this.response(request); return;
+      case 'qemuAsm.dependencyReport':
+        this.trust();
+        if (!this.runtime?.capabilities) throw new Error('调试运行时尚未提供依赖报告');
+        this.response(request, this.runtime.capabilities.snapshot()); return;
       case 'threads': this.response(request, { threads: this.phase === 'ended' ? [] : [{ id: 1, name: 'CPU 0（C / ELF / DWARF）' }] }); return;
       case 'setBreakpoints': {
         this.trust(); const file = typeof (args.source as { path?: unknown } | undefined)?.path === 'string' ? await this.fileKey((args.source as { path: string }).path) : '';

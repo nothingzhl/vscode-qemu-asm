@@ -2,6 +2,8 @@
 
 用于 VS Code 1.96+ 的 x86 汇编与操作系统开发调试工具。支持 NASM 引导项目，以及通过外部构建接入的 32 位 C 内核；提供源码断点、单步、寄存器、调用栈、内存、GDT/IDT、反汇编、数据断点、非 PAE 页表与右侧 QEMU 显示器。0.7.0 增加[基于 ELF/DWARF 的 C 源码调试、局部变量、结构体和数组查看](docs/C_SOURCE_VALIDATION.md)。项目通过 `qemu-asm.json` 配置；内置 NASM 模板用于检查环境，C 项目沿用自己的编译器和加载器。暂不提供语法高亮和补全。
 
+0.8.0 开始[依赖隔离重构](docs/DEPENDENCY_REFACTOR.md)：统一工具解析与进程边界、按会话记录能力、可导出依赖报告、延迟加载解码器，并可关闭模拟显示器。
+
 ## 功能演示
 
 [按功能查看 8 段录屏与 GIF](docs/demos/README.md)：构建与显示器、汇编调试、C 源码调试、反汇编、数据断点、内存、分页和描述符表。每段独立观看，附操作说明与录制环境。
@@ -20,7 +22,7 @@ npm run compile
 
 在 VS Code 打开本仓库，按 F5 启动扩展开发宿主。在宿主中打开并信任一个本地文件夹，然后从命令面板依次执行：
 
-1. **QEMU Assembly: 检查环境**：显示 NASM、qemu-system-i386 的路径和版本；缺失时提示配置方法。
+1. **QEMU Assembly: 检查环境**：按项目检查 NASM/QEMU/GDB 的路径、身份与版本，报告缺失项；外部构建器只解析路径。版本通过不表示调试协议已通过。
 2. 已有 NASM 项目可按下方[配置](#配置)添加 `qemu-asm.json`。需要最小项目检查环境时，执行 **QEMU Assembly: 创建引导项目**：选择目录，生成 `boot.asm` 和 `qemu-asm.json`，并保存该工作区的项目位置。也可用 **QEMU Assembly: 创建二阶段保护模式项目**，额外生成 `stage2.asm`。任一目标文件已存在则拒绝覆盖；若中途冲突，仅回滚本次创建的文件。
 3. **QEMU Assembly: 构建并运行**：保存文件、停止已有实例、重新构建，再通过 TCG 无界面启动 QEMU。单扇区示例在输出面板出现 `QEMU_ASM_BOOT_OK`，二阶段示例出现 `PROTECTED_MODE_OK`，表示已引导成功。
 4. **QEMU Assembly: 停止**：或点击状态栏，停止插件启动的进程。重复运行会先停止上一实例；扩展退出也会清理。
@@ -152,6 +154,7 @@ C 后端继续使用反汇编、地址/数据断点、虚拟/物理内存、页�
 | `qemuAsm.nasmPath` | `nasm` | 可执行文件路径，不含参数或包裹路径的引号 |
 | `qemuAsm.qemuPath` | `qemu-system-i386` | 同上；Windows 可填写完整 `.exe` 路径 |
 | `qemuAsm.gdbPath` | `gdb` | C/ELF 调试使用的 GDB；NASM 后端无需此工具 |
+| `qemuAsm.displayMode` | `auto` | `auto` 创建显示器，资源初始化失败时继续无显示调试；`off` 不分配 QMP 显示资源 |
 | `qemuAsm.projectDirectory` | `.` | 包含 `qemu-asm.json` 的项目目录 |
 | `qemuAsm.qemuArgs` | `[]` | 额外 QEMU 参数，采用选项和值成对的字符串数组 |
 
@@ -212,6 +215,14 @@ C 项目使用自己的构建命令与 ELF：
 
 外部工具执行与示例创建均要求 Workspace Trust；只支持文件系统工作区。停止、失败、超时和退出只清理本会话创建的进程。Linux 已实际验证构建器正常/异常退出、取消及超时后的本进程组后代清理；构建命令不应自行脱离进程组或启动长期后台服务。Windows/macOS 的原生行为尚未验证。
 
+## 依赖检查与适配
+
+**QEMU Assembly: 打开依赖与能力报告** 在只读 JSON 文档中显示基础检查和当前调试会话的独立能力记录，可自行保存或复制。基础检查不构建项目、不连接目标、不自动安装工具；会话报告只标记真实执行过的协议或功能，未检查项保持 `unknown`。
+
+工具运行在扩展宿主。远程开发时请在 WSL、容器或 SSH 宿主安装并配置工具。显式路径与 PATH 命令在检查、构建和调试中使用同一规则；含空格的路径直接填写，不加外层引号。Windows `.cmd/.bat` 构建脚本需要显式配置解释器与参数。NASM 后端无需 GDB，外部构建无需插件内置 NASM；安装 VSIX 的用户无需另装 Node/npm、Python、FFmpeg 或其他调试扩展。
+
+解码器首次使用反汇编时才加载，加载故障不会阻止环境检查或构建；NASM 无源码映射的 F10 也需要解码，失败时可使用 F11。显示器资源分配失败会记录原因并继续；QMP 连接或截图失败保留核心调试。若目标 QEMU 拒绝显示相关启动参数，可设置 `qemuAsm.displayMode: "off"` 后重启。平台和版本的实际验证范围见[依赖重构验证](docs/DEPENDENCY_VALIDATION.md)；Windows/macOS 原生组合仍待验收。
+
 ## 可重复验证
 
 ```sh
@@ -229,6 +240,8 @@ npm run test:machine
 npm run test:paging
 npm run test:c-source
 ```
+
+`npm run test:dependencies` 验证统一路径、NASM 无 GDB、外部构建无 NASM、能力按需记录及会话隔离；`QEMU_ASM_HOST_PHASES=dependencies npm run test:host` 验证命令、JSON 报告与关闭显示器。`npm run test:vsix:dependencies` 从独立安装目录验收分发包。
 
 `npm test` 覆盖配置解析、空格路径、多工作区基准、不覆盖文件、旧镜像失效、启动失败、超时、取消、符号链接边界、停止与强制终止、异常信号终止、分块 UTF-8 中文日志。额外路径测试使用 Node 的 `path.win32` 和 `path.posix` 验证 Windows 盘符、UNC、空格与中文路径；这些测试不代替原生平台执行。测试直接运行编译后的核心模块，并覆盖 NASM listing、RSP 编码、调试请求与清理竞态；真实 listing 测试需 NASM，否则单独标记跳过。显示器另有 QMP 并发/超时、图像转换及会话清理测试。
 

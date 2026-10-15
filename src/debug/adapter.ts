@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { DebugAdapter, DebugProtocolMessage, Disposable, Event } from 'vscode';
 import { build, Processes, Project } from '../core';
+import type { CapabilityLedger } from '../dependencies/capabilities';
 import { SourceMap, parseListing } from './listing';
 import { SourceMaps } from './maps';
 import { inspectDescriptors, inspectMemory } from './inspection';
@@ -12,9 +13,9 @@ import { inspectPaging } from './paging';
 import { MachineBreakpoints, machineAddress, memoryDataId, watchpoint } from './machineBreakpoints';
 import { cpuMode, DebugRuntime, instructionAddress, stackAddress, stackWidth, StoppedEvent } from './runtime';
 
-export interface DebugDisplay { readonly args: string[]; connect(): Promise<void>; dispose(): Promise<void> }
+export interface DebugDisplay { readonly args: string[]; observeCapabilities?(ledger: CapabilityLedger): void; connect(): Promise<void>; dispose(): Promise<void> }
 interface Request { seq: number; command: string; arguments?: Record<string, unknown> }
-export interface AdapterOptions { getProject: () => Promise<Project>; isTrusted: () => boolean; log?: (text: string) => void; createDisplay?: () => Promise<DebugDisplay> }
+export interface AdapterOptions { getProject: () => Promise<Project>; isTrusted: () => boolean; log?: (text: string) => void; createDisplay?: () => Promise<DebugDisplay | undefined> }
 interface Frame { id: number; name: string; line: number; column: number; instructionPointerReference: string; source?: { name: string; path: string } }
 const hex = (value: number, digits = 4) => `0x${(value >>> 0).toString(16).toUpperCase().padStart(digits, '0')}`;
 const integer = (value: unknown, fallback: number) => typeof value === 'number' && Number.isSafeInteger(value) ? value : fallback;
@@ -119,6 +120,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const display = this.display = await this.options.createDisplay?.();
     if (epoch !== this.epoch) { await display?.dispose(); throw new Error('调试启动已取消'); }
     const runtime = this.runtime = new DebugRuntime(project, text => this.output(text, 'stdout'), display?.args);
+    display?.observeCapabilities?.(runtime.capabilities);
     runtime.on('stopped', (event: StoppedEvent) => {
       if (epoch !== this.epoch || this.phase === 'preparing') return;
       if (this.internalPause) { this.internalStop = event; return; }
@@ -279,6 +281,10 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       case 'launch':
         await this.prepare(args); this.response(request); this.event('initialized'); return;
       case 'configurationDone': await this.boot(); this.response(request); return;
+      case 'qemuAsm.dependencyReport':
+        this.trust();
+        if (!this.runtime) throw new Error('调试运行时尚未启动');
+        this.response(request, this.runtime.capabilities.snapshot()); return;
       case 'threads': this.response(request, { threads: [{ id: 1, name: 'CPU 0（x86 16/32 位）' }] }); return;
       case 'setBreakpoints': {
         this.trust();
