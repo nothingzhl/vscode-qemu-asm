@@ -6,17 +6,58 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        vscode: ['1.96.4', stable]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      VSCODE_VERSION: ${{ matrix.vscode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
+      - name: Install Linux tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86 xvfb
+      - name: Install macOS tools
+        if: runner.os == 'macOS'
+        run: brew install nasm qemu
+      - name: Install Windows tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm qemu -y --no-progress
+          $nasm = Get-ChildItem 'C:\Program Files\NASM*' -Filter nasm.exe -Recurse | Select-Object -First 1
+          $qemu = Get-ChildItem 'C:\Program Files\qemu' -Filter qemu-system-i386.exe -Recurse | Select-Object -First 1
+          if (!$nasm -or !$qemu) { throw 'NASM or QEMU executable not found after installation' }
+          "NASM_PATH=$($nasm.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "QEMU_PATH=$($qemu.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm ci
       - run: npm run check
       - run: npm run compile
       - run: npm test
-      - run: npm run test:integration
+      - run: npm run test:integration 2>&1 | tee integration.log
+        shell: bash
         timeout-minutes: 2
+      - name: Test Linux VS Code extension host
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
+        shell: bash
+      - name: Test macOS / Windows VS Code extension host
+        if: runner.os != 'Linux'
+        run: npm run test:host 2>&1 | tee host-test.log
+        shell: bash
+      - name: Upload integration and host logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-${{ matrix.os }}-${{ matrix.vscode }}
+          path: |
+            integration.log
+            host-test.log
+          if-no-files-found: ignore

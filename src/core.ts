@@ -64,9 +64,14 @@ function string(value: unknown, fallback: string): string {
 export function resolveProject(workspace: string, projectDir: unknown, data: unknown, tools: { nasm?: unknown; qemu?: unknown; qemuArgs?: unknown } = {}): Project {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('项目配置必须是 JSON 对象');
   const config = data as Record<string, unknown>;
-  const root = path.resolve(workspace, string(projectDir, '.'));
-  const tool = (value: unknown, fallback: string) => {
+  const configuredPath = (value: unknown, fallback: string) => {
     const name = string(value, fallback);
+    if (/^[a-z]:[^\\/]/i.test(name) || /^[a-z]:$/i.test(name)) throw new Error('不支持盘符相对路径，请使用完整绝对路径');
+    return name;
+  };
+  const root = path.resolve(workspace, configuredPath(projectDir, '.'));
+  const tool = (value: unknown, fallback: string) => {
+    const name = configuredPath(value, fallback);
     return name.includes('/') || name.includes('\\') ? path.resolve(workspace, name) : name;
   };
   const args = tools.qemuArgs ?? [];
@@ -74,8 +79,8 @@ export function resolveProject(workspace: string, projectDir: unknown, data: unk
   // Only machine resource options are supported; disk, daemon and chardev options would bypass lifecycle ownership.
   const allowed = new Set(['-m', '-cpu', '-smp']);
   if (args.length % 2 || args.some((a, i) => i % 2 === 0 ? !allowed.has(a) : a.startsWith('-') || !a.trim())) throw new Error('qemuArgs 仅支持 -m、-cpu、-smp 的选项/值对');
-  const source = path.resolve(root, string(config.source, 'boot.asm'));
-  const image = path.resolve(root, string(config.image, 'build/boot.img'));
+  const source = path.resolve(root, configuredPath(config.source, 'boot.asm'));
+  const image = path.resolve(root, configuredPath(config.image, 'build/boot.img'));
   const relativeImage = path.relative(root, image);
   if (source === image || relativeImage === '..' || relativeImage.startsWith(`..${path.sep}`) || path.isAbsolute(relativeImage)) throw new Error('镜像必须位于项目内且不能覆盖源码');
   if (image === path.join(root, 'qemu-asm.json')) throw new Error('镜像不能覆盖项目配置');
@@ -94,17 +99,22 @@ export async function createProject(root: string): Promise<void> {
 }
 export class Processes {
   private children = new Set<ChildProcess>();
+  private stopping = new WeakSet<ChildProcess>();
   private closed = false;
   start(command: string, args: string[], cwd: string, log: (text: string) => void): { child: ChildProcess; ready: Promise<void>; done: Promise<void> } {
     if (this.closed) throw new Error('插件正在退出');
     const child = spawn(command, args, { cwd, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     this.children.add(child);
-    child.stdout?.on('data', b => log(b.toString()));
-    child.stderr?.on('data', b => log(b.toString()));
+    child.stdout?.setEncoding('utf8').on('data', text => log(text));
+    child.stderr?.setEncoding('utf8').on('data', text => log(text));
     const ready = new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
     const done = new Promise<void>((resolve, reject) => {
       child.once('error', reject);
-      child.once('close', (code, signal) => { this.children.delete(child); code === 0 || signal ? resolve() : reject(new Error(`${command} 退出码 ${code}`)); });
+      child.once('close', (code, signal) => {
+        this.children.delete(child);
+        if (code === 0 || this.stopping.has(child)) resolve();
+        else reject(new Error(signal ? `${command} 被信号 ${signal} 终止` : `${command} 退出码 ${code}`));
+      });
     });
     void done.catch(() => undefined);
     return { child, ready, done };
@@ -112,6 +122,7 @@ export class Processes {
   async stop(): Promise<void> {
     await Promise.all([...this.children].map(child => new Promise<void>((resolve) => {
       if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      this.stopping.add(child);
       const timer = setTimeout(() => child.kill('SIGKILL'), 1500);
       child.once('close', () => { clearTimeout(timer); resolve(); });
       child.kill('SIGTERM');
@@ -124,6 +135,7 @@ export async function execute(processes: Processes, command: string, args: strin
   let expired = false;
   const timer = setTimeout(() => { expired = true; run.child.kill('SIGKILL'); }, timeout);
   try { await run.ready; await run.done; if (expired) throw new Error(`${command} 执行超时`); }
+  catch (error) { if (expired) throw new Error(`${command} 执行超时`); throw error; }
   finally { clearTimeout(timer); }
 }
 export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false): Promise<void> {
@@ -133,6 +145,14 @@ export async function build(project: Project, processes: Processes, log: (text: 
   const [actualRoot, actualParent] = await Promise.all([fs.realpath(project.root), fs.realpath(path.dirname(project.image))]);
   const relativeParent = path.relative(actualRoot, actualParent);
   if (relativeParent === '..' || relativeParent.startsWith(`..${path.sep}`) || path.isAbsolute(relativeParent)) throw new Error('镜像目录不能通过符号链接指向项目外');
+  check();
+  // File identity also protects case-insensitive volumes, hardlinks and symlinked parent directories.
+  const statIfExists = async (file: string) => {
+    try { return await fs.stat(file, { bigint: true }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  };
+  const [imageInfo, sourceInfo, configInfo] = await Promise.all([project.image, project.source, path.join(project.root, 'qemu-asm.json')].map(statIfExists));
+  if (imageInfo && [sourceInfo, configInfo].some(info => info && imageInfo.dev === info.dev && imageInfo.ino === info.ino)) throw new Error('镜像与源码或项目配置指向同一文件，已取消构建');
   check();
   // Never accept an earlier artifact after a failed build. Use an exclusive temporary directory.
   await fs.rm(project.image, { force: true });

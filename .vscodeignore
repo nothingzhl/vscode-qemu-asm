@@ -11,3 +11,4 @@ scripts/**
 CLOUD_TASK.md
 AGENTS.md
 docs/**
+.vscode-test/**

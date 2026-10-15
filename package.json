@@ -22,7 +22,8 @@
     "watch": "tsc -watch -p ./",
     "check": "tsc --noEmit -p ./",
     "test": "npm run compile && node --test test/*.test.cjs",
-    "test:integration": "npm run compile && node scripts/integration.cjs"
+    "test:integration": "npm run compile && node scripts/integration.cjs",
+    "test:host": "npm run compile && node scripts/host-test.cjs"
   },
   "contributes": {
     "commands": [
@@ -83,6 +84,7 @@
   "devDependencies": {
     "@types/node": "22.20.5",
     "@types/vscode": "1.96.0",
+    "@vscode/test-electron": "2.5.2",
     "typescript": "5.9.3"
   },
   "capabilities": {
