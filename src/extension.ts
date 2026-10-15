@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { DisplayController } from './display/controller';
 import { AssemblyDebugAdapter } from './debug/adapter';
 import { build, createProject, execute, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
 
 let processes: Processes | undefined;
+let displays: DisplayController | undefined;
 const debugAdapters = new Set<AssemblyDebugAdapter>();
 export function activate(context: vscode.ExtensionContext): void {
   const runner = processes = new Processes();
@@ -18,6 +20,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let generation = 0;
   let running = false;
   const trusted = () => { if (!vscode.workspace.isTrusted) throw new Error('请先信任此工作区，才可执行工具或创建项目。'); };
+  const display = displays = new DisplayController(context, trusted, text => output.append(text));
   async function folder(): Promise<vscode.WorkspaceFolder> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.length) throw new Error('请先打开项目所在文件夹。');
@@ -36,7 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
     catch (error) { throw new Error(`无法读取 qemu-asm.json，请先创建项目。${String(error)}`); }
     return resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), data, { nasm: settings.get('nasmPath'), qemu: settings.get('qemuPath'), qemuArgs: settings.get('qemuArgs') });
   }
-  async function stop(): Promise<void> { generation++; await Promise.all([runner.stop(), ...[...debugAdapters].map(adapter => adapter.dispose())]); running = false; state('已停止'); }
+  async function stop(): Promise<void> { generation++; await Promise.all([runner.stop(), display.stop(), ...[...debugAdapters].map(adapter => adapter.dispose())]); running = false; state('已停止'); }
   async function compile(p: Project, token: number): Promise<void> {
     diagnostics.clear();
     state('构建中');
@@ -101,8 +104,15 @@ export function activate(context: vscode.ExtensionContext): void {
     if (token !== generation) return;
     await compile(p, token);
     if (token !== generation) return;
-    const run = runner.start(p.qemu, qemuArguments(p), p.root, text => output.append(text));
-    await run.ready;
+    const screen = await display.create();
+    if (token !== generation) { await display.stop(screen); return; }
+    let run: ReturnType<Processes['start']>;
+    try {
+      run = runner.start(p.qemu, [...qemuArguments(p), ...screen.args], p.root, text => output.append(text));
+      await run.ready;
+    } catch (error) { await display.stop(screen); throw error; }
+    void run.done.then(() => display.stop(screen), () => display.stop(screen)).catch(error => output.appendLine(String(error)));
+    await display.connect(screen);
     if (token !== generation) { await runner.stop(); return; }
     running = true; state('运行中（点击停止）');
     output.appendLine('QEMU 已启动，使用“停止”结束运行。');
@@ -112,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (generation === token) { running = false; state('失败'); output.appendLine(String(error)); void vscode.window.showErrorMessage(`QEMU 启动或运行失败：${String(error)}`); }
     });
   });
+  context.subscriptions.push(vscode.commands.registerCommand('qemuAsm.showDisplay', () => display.show()));
   register('debug', async () => {
     const selected = await folder();
     await vscode.debug.startDebugging(selected, { type: 'qemu-asm', request: 'launch', name: '操作系统学习：16 位引导调试', stopOnEntry: true });
@@ -137,7 +148,10 @@ export function activate(context: vscode.ExtensionContext): void {
         trusted();
         const selected = session.workspaceFolder ?? vscode.workspace.workspaceFolders?.find(item => item.uri.toString() === session.configuration.__workspace);
         if (!selected) throw new Error('调试会话缺少所选工作区');
-        const adapter = new AssemblyDebugAdapter({ getProject: () => project(true, selected), isTrusted: () => vscode.workspace.isTrusted, log: text => output.append(text) });
+        const adapter = new AssemblyDebugAdapter({ getProject: () => project(true, selected), isTrusted: () => vscode.workspace.isTrusted, log: text => output.append(text), createDisplay: async () => {
+          const screen = await display.create();
+          return { args: screen.args, connect: () => display.connect(screen), dispose: () => display.stop(screen) };
+        } });
         debugAdapters.add(adapter);
         const dispose = adapter.dispose.bind(adapter);
         adapter.dispose = async () => { try { await dispose(); } finally { debugAdapters.delete(adapter); } };
@@ -147,6 +161,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.debug.onDidTerminateDebugSession(session => { if (session.type === 'qemu-asm') state('已停止'); })
   );
-  context.subscriptions.push(output, diagnostics, status, { dispose: () => { generation++; if (running) running = false; void runner.dispose(); for (const adapter of debugAdapters) void adapter.dispose(); } });
+  context.subscriptions.push(output, diagnostics, status, { dispose: () => { generation++; if (running) running = false; void runner.dispose(); void display.dispose(); for (const adapter of debugAdapters) void adapter.dispose(); } });
 }
-export async function deactivate(): Promise<void> { await Promise.all([processes?.dispose(), ...[...debugAdapters].map(adapter => adapter.dispose())]); }
+export async function deactivate(): Promise<void> { await Promise.all([processes?.dispose(), displays?.dispose(), ...[...debugAdapters].map(adapter => adapter.dispose())]); }

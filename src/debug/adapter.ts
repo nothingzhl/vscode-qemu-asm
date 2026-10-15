@@ -7,8 +7,9 @@ import { build, Processes, Project } from '../core';
 import { SourceMap, parseListing } from './listing';
 import { DebugRuntime, realModeAddress, StoppedEvent } from './runtime';
 
+export interface DebugDisplay { readonly args: string[]; connect(): Promise<void>; dispose(): Promise<void> }
 interface Request { seq: number; command: string; arguments?: Record<string, unknown> }
-export interface AdapterOptions { getProject: () => Promise<Project>; isTrusted: () => boolean; log?: (text: string) => void }
+export interface AdapterOptions { getProject: () => Promise<Project>; isTrusted: () => boolean; log?: (text: string) => void; createDisplay?: () => Promise<DebugDisplay> }
 interface Frame { id: number; name: string; line: number; column: number; instructionPointerReference: string; source?: { name: string; path: string } }
 const hex = (value: number, digits = 4) => `0x${(value >>> 0).toString(16).toUpperCase().padStart(digits, '0')}`;
 const integer = (value: unknown, fallback: number) => typeof value === 'number' && Number.isSafeInteger(value) ? value : fallback;
@@ -27,6 +28,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
   private queue: Promise<void> = Promise.resolve();
   private processes = new Processes();
   private runtime?: DebugRuntime;
+  private display?: DebugDisplay;
   private map?: SourceMap;
   private sourceKey = '';
   private epoch = 0;
@@ -92,7 +94,9 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     this.trust();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.userAddresses = this.addresses();
-    const runtime = this.runtime = new DebugRuntime(project, text => this.output(text, 'stdout'));
+    const display = this.display = await this.options.createDisplay?.();
+    if (epoch !== this.epoch) { await display?.dispose(); throw new Error('调试启动已取消'); }
+    const runtime = this.runtime = new DebugRuntime(project, text => this.output(text, 'stdout'), display?.args);
     runtime.on('stopped', (event: StoppedEvent) => {
       if (epoch !== this.epoch || this.phase === 'preparing') return;
       if (this.internalPause) { this.internalStop = event; return; }
@@ -107,6 +111,8 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       void this.finish();
     });
     await runtime.launch();
+    if (epoch !== this.epoch) throw new Error('调试启动已取消');
+    await display?.connect();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.phase = 'configuring';
     this.output('16 位实模式调试已就绪。暂停后可查看寄存器、SS:SP 栈内存和 BP 栈帧链。\n');
@@ -293,7 +299,8 @@ export class AssemblyDebugAdapter implements DebugAdapter {
   private async cleanup(): Promise<void> {
     ++this.epoch;
     const runtime = this.runtime; this.runtime = undefined;
-    await Promise.all([runtime?.dispose(), this.processes.stop()]);
+    const display = this.display; this.display = undefined;
+    await Promise.all([runtime?.dispose(), display?.dispose(), this.processes.stop()]);
     this.temporary = undefined;
   }
   private finish(): Promise<void> {

@@ -1,0 +1,42 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; color: var(--vscode-foreground); background: var(--vscode-editor-background); font: var(--vscode-font-size)/1.5 var(--vscode-font-family); }
+button { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); border: 1px solid transparent; border-radius: 4px; font: inherit; font-size: 12px; padding: 5px 10px; white-space: nowrap; cursor: pointer; }
+button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+[hidden] { display: none !important; }
+.monitor { display: flex; flex-direction: column; min-height: calc(100vh - 32px); gap: 12px; max-width: 1800px; margin: auto; }
+.toolbar, .identity, .actions, .scale-group, .status-line, .keyboard-bar { display: flex; align-items: center; }
+.toolbar { justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.identity { gap: 8px; white-space: nowrap; }
+.identity strong { font-size: 14px; font-weight: 600; }
+.monitor-icon { font-size: 21px; color: var(--vscode-descriptionForeground); line-height: 1; }
+.source { padding: 1px 5px; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-widget-border, #80808055); border-radius: 3px; font-size: 10px; letter-spacing: .5px; }
+.actions { gap: 8px; }
+.scale-group { gap: 1px; padding: 2px; background: var(--vscode-input-background); border: 1px solid var(--vscode-widget-border, #80808055); border-radius: 5px; }
+.scale { background: transparent; padding: 2px 10px; }
+.scale.active, #keyboard[aria-pressed="true"] { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.status-line { gap: 7px; font-size: 12px; color: var(--vscode-descriptionForeground); min-height: 18px; }
+.status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--vscode-disabledForeground); }
+.status-dot.connected { background: var(--vscode-testing-iconPassed, #73c991); }
+.status-dot.connecting { background: var(--vscode-editorWarning-foreground, #cca700); }
+.status-dot.error { background: var(--vscode-editorError-foreground, #f14c4c); }
+#status { overflow-wrap: anywhere; }
+#dimensions { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.screen { display: grid; flex: 1; min-height: 260px; height: calc(100vh - 180px); max-height: calc(100vh - 180px); padding: 12px; overflow: auto; background: #000; border: 1px solid var(--vscode-widget-border, #80808066); border-radius: 7px; outline: none; }
+.screen.fit { place-items: center; }
+.screen.fit img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; min-height: 0; }
+.screen.actual { display: block; }
+.screen.actual img { display: block; max-width: none; max-height: none; image-rendering: pixelated; margin: auto; }
+.screen.keyboard-enabled { cursor: text; }
+.screen.keyboard-enabled:focus { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
+.placeholder { align-self: center; justify-self: center; display: flex; flex-direction: column; align-items: center; gap: 8px; color: #939393; padding: 20px; text-align: center; }
+.placeholder-icon { font-size: 38px; color: #666; line-height: 1.2; }
+.placeholder strong { color: #b7b7b7; font-size: 14px; font-weight: 500; }
+.placeholder span:last-child { font-size: 12px; }
+.keyboard-bar { gap: 10px; flex-wrap: wrap; }
+#keyboard-hint { font-size: 11px; color: var(--vscode-descriptionForeground); flex: 1; }
+.secondary { font-size: 10px; }
+.notice { margin: 0; padding: 8px 10px; color: var(--vscode-errorForeground); background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder, transparent); border-radius: 4px; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 420px) { body { padding: 10px; } .source { display: none; } .monitor { min-height: calc(100vh - 20px); gap: 10px; } .toolbar { gap: 8px; } .screen { min-height: 180px; padding: 6px; } #keyboard-hint { flex-basis: 100%; order: 3; } .keyboard-bar { gap: 8px; } }

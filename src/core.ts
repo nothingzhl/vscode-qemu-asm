@@ -12,6 +12,9 @@ mov ss, ax
 mov sp, 0x7c00
 xor bp, bp
 cld
+; VGA 文本模式，右侧模拟显示器显示实际 BIOS 输出
+mov ax, 0x0003
+int 0x10
 ; COM1: 115200 baud, 8N1, FIFO enabled
 mov dx, 0x3f9
 xor al, al
@@ -55,6 +58,15 @@ jz wait_tx
 mov dx, 0x3f8
 mov al, bl
 out dx, al
+; 同时通过 BIOS 显示字符，串口日志仍可用于无界面验证
+push bx
+push si
+mov al, bl
+mov ah, 0x0e
+xor bh, bh
+int 0x10
+pop si
+pop bx
 pop ax
 pop bp
 ret
