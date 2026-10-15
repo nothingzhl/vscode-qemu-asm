@@ -60,6 +60,10 @@ jobs:
         run: npm run test:protected 2>&1 | tee protected-integration.log
         shell: bash
         timeout-minutes: 3
+      - name: Test real QEMU memory and descriptor inspection
+        run: npm run test:inspection 2>&1 | tee inspection-integration.log
+        shell: bash
+        timeout-minutes: 3
       - name: Test Linux VS Code commands and debugger
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
@@ -79,5 +83,6 @@ jobs:
             display-integration.log
             stage-integration.log
             protected-integration.log
+            inspection-integration.log
             host-test.log
           if-no-files-found: ignore
