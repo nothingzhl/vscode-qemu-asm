@@ -6,6 +6,7 @@ import type { DebugAdapter, DebugProtocolMessage, Disposable, Event } from 'vsco
 import { build, Processes, Project } from '../core';
 import { SourceMap, parseListing } from './listing';
 import { SourceMaps } from './maps';
+import { inspectDescriptors, inspectMemory } from './inspection';
 import { cpuMode, DebugRuntime, instructionAddress, stackAddress, stackWidth, StoppedEvent } from './runtime';
 
 export interface DebugDisplay { readonly args: string[]; connect(): Promise<void>; dispose(): Promise<void> }
@@ -301,6 +302,10 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         this.temporary = Number(frames[1].instructionPointerReference); await this.installBreakpoints(); await this.continue(false); this.response(request); return;
       }
       case 'pause': this.trust(); await this.runtime?.pause(); this.response(request); return;
+      case 'qemuAsm.inspectMemory':
+        this.response(request, await inspectMemory(this.requireStopped(), args)); return;
+      case 'qemuAsm.inspectDescriptors':
+        this.response(request, await inspectDescriptors(this.requireStopped(), args)); return;
       case 'readMemory': {
         const address = this.address(String(args.memoryReference ?? '')) + integer(args.offset, 0); const count = integer(args.count, 0);
         if (count < 0 || count > 4096) throw new Error('每次最多读取 4096 字节');

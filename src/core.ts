@@ -166,6 +166,10 @@ mov gs, ax
 mov ss, ax
 mov esp, 0x90000
 xor ebp, ebp
+; 只安装可供查看的最小 IDT：向量 3 指向下方的 IRETD 处理器。
+; 本课仍保持 IF=0，不触发中断；不要把它当作完整异常处理表。
+lidt [idt_descriptor]
+inspection_ready:
 mov esi, message
 mov edi, 0xb8000
 print_next:
@@ -207,10 +211,39 @@ learning_nested:
 push ebp
 mov ebp, esp
 mov ebx, [ebp+8]
+; EDI 指向下面的数据区；复制寄存器 EDI 的值到内存地址框，观察三个双字。
+mov edi, inspection_data
 learning_breakpoint:
 nop
+; 在内存查看器中观察第三个双字：单步执行后由 0 变为 1。
+inc dword [inspection_data+8]
+inspection_changed:
 pop ebp
 ret
+
+inspection_handler:
+iretd
+
+align 8
+idt:
+dq 0
+dq 0
+dq 0
+; 32 位中断门：偏移低 16 位、代码选择子、保留字节、P/DPL/type、高 16 位。
+; 整个 stage2 位于 0x8000..0x83ff，因此处理器偏移的高 16 位为 0。
+dw inspection_handler
+dw 0x08
+db 0
+db 0x8e
+dw 0
+idt_end:
+idt_descriptor:
+dw idt_end-idt-1
+dd idt
+align 4
+; 小端布局：44 33 22 11 88 77 66 55 00 00 00 00。
+inspection_data:
+dd 0x11223344, 0x55667788, 0
 ; 成功字符串位于第二个扇区，真实引导验证必须读到它。
 times 768-($-$$) db 0
 message db '${PROTECTED_MARKER}', 13, 10, 0

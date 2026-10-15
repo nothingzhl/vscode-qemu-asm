@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { DisplayController } from './display/controller';
 import { AssemblyDebugAdapter } from './debug/adapter';
+import { InspectorProvider } from './inspector/provider';
 import { build, createProject, execute, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
 
 let processes: Processes | undefined;
@@ -21,6 +22,12 @@ export function activate(context: vscode.ExtensionContext): void {
   let running = false;
   const trusted = () => { if (!vscode.workspace.isTrusted) throw new Error('请先信任此工作区，才可执行工具或创建项目。'); };
   const display = displays = new DisplayController(context, trusted, text => output.append(text));
+  const inspector = new InspectorProvider(context);
+  context.subscriptions.push(inspector,
+    vscode.window.registerWebviewViewProvider('qemuAsm.inspector', inspector, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.debug.registerDebugAdapterTrackerFactory('qemu-asm', { createDebugAdapterTracker: session => inspector.createDebugAdapterTracker(session) }),
+    vscode.commands.registerCommand('qemuAsm.showInspector', () => vscode.commands.executeCommand('qemuAsm.inspector.focus'))
+  );
   async function folder(): Promise<vscode.WorkspaceFolder> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.length) throw new Error('请先打开项目所在文件夹。');

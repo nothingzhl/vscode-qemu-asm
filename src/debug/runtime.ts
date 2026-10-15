@@ -304,6 +304,19 @@ export function monitorRegisters(text: string): Record<string, number> {
     values[`${name}_limit`] = parseInt(segment[3], 16);
     values[`${name}_flags`] = parseInt(segment[4], 16);
   }
+  // Older monitor fixtures need not expose these; only the inspector requires them.
+  for (const [name, prefix] of [['GDT', 'gdtr'], ['IDT', 'idtr']]) {
+    const table = new RegExp(`^${name}\\s*=\\s*([0-9a-f]+)\\s+([0-9a-f]+)`, 'im').exec(text);
+    if (table) { values[`${prefix}_base`] = parseInt(table[1], 16); values[`${prefix}_limit`] = parseInt(table[2], 16); }
+  }
+  for (const name of ['ldt', 'tr']) {
+    const segment = new RegExp(`^${name.toUpperCase()}\\s*=\\s*([0-9a-f]+)\\s+([0-9a-f]+)\\s+([0-9a-f]+)\\s+([0-9a-f]+)`, 'im').exec(text);
+    if (!segment) continue;
+    values[name] = parseInt(segment[1], 16);
+    values[`${name}_base`] = parseInt(segment[2], 16);
+    values[`${name}_limit`] = parseInt(segment[3], 16);
+    values[`${name}_flags`] = parseInt(segment[4], 16);
+  }
   return values;
 }
 
