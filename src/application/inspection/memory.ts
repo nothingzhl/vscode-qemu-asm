@@ -2,7 +2,7 @@ import type { MemoryInspectionArgs, MemorySnapshot } from '../../domain/inspecti
 import { cpuMode, instructionAddress, stackAddress } from '../../domain/x86/state';
 import type { InspectionRuntime } from '../../ports/inspection';
 import { walkPaging } from './paging';
-import { boundedInteger, inspectionAddress, memoryRange, objectArgs, readExact } from './requests';
+import { boundedInteger, inspectionAddress, objectArgs, readExact } from './requests';
 export async function inspectMemory(runtime: InspectionRuntime, args: unknown = {}): Promise<MemorySnapshot> {
   objectArgs(args);
   const request = args as MemoryInspectionArgs;
@@ -26,7 +26,6 @@ export async function inspectMemory(runtime: InspectionRuntime, args: unknown = 
       : follow === 'ebp'
         ? stackAddress(registers, registers.ebp)
         : (requested ?? instructionAddress(registers));
-  memoryRange(address, count);
   const bytes = await readExact(runtime, address, count, space);
   const pagingEnabled = !!((registers.cr0 ?? 0) & 0x80000000);
   let addressContext = space === 'physical' ? 'physical' : 'virtual:unpaged';

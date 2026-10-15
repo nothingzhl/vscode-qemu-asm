@@ -42,7 +42,7 @@ export function watchpoint(value: unknown): DataWatchpoint {
 export function memoryDataId(address: number, size: number): string {
   return `qemu-mem:${address.toString(16)}:${size}`;
 }
-export function parseMemoryDataId(value: unknown): { address: number; size: 1 | 2 | 4 } {
+function parseMemoryDataId(value: unknown): { address: number; size: 1 | 2 | 4 } {
   if (typeof value !== 'string' || !/^qemu-mem:[0-9a-f]{1,8}:[124]$/i.test(value))
     throw new Error('不支持的数据断点标识；请重新选择内存地址');
   const [, rawAddress, rawSize] = value.split(':');

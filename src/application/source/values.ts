@@ -1,9 +1,9 @@
 import * as path from 'node:path';
-import { cpuMode, instructionAddress, stackAddress, stackWidth } from '../../domain/x86/state';
 import type { MemoryReader, RegisterReader } from '../../ports/machine';
 import type { SourceStackReader, SourceVariable, SourceVariableReader } from '../../ports/source';
 import { hex, readOnly } from '../format';
 import type { Frame, Handle, Variable } from './valuesModel';
+import { machineVariables } from './machineValues';
 
 interface ValueBackend extends RegisterReader, MemoryReader {
   variables: SourceVariableReader;
@@ -18,6 +18,10 @@ export class SourceValues {
   handleSerial = 10000;
   private variableObjects = new Set<string>();
   private variableCache = new Map<string, Variable[]>();
+  private cachedVariableCount = 0;
+  private readonly pendingVariables = new Map<string, Promise<Variable[]>>();
+  private pendingFrames?: Promise<Frame[]>;
+  private revision = 0;
 
   handle(value: Handle): number {
     if (this.handles.size >= 4096) throw new Error('当前暂停最多展开 4096 个变量节点，请继续后重试');
@@ -26,9 +30,22 @@ export class SourceValues {
     return id;
   }
 
-  async frames(): Promise<Frame[]> {
-    if (this.framesCache) return this.framesCache;
+  frames(): Promise<Frame[]> {
+    if (this.framesCache) return Promise.resolve(this.framesCache);
+    if (this.pendingFrames) return this.pendingFrames;
+    const task = this.loadFrames(this.revision);
+    this.pendingFrames = task;
+    void task
+      .finally(() => {
+        if (this.pendingFrames === task) this.pendingFrames = undefined;
+      })
+      .catch(() => undefined);
+    return task;
+  }
+
+  private async loadFrames(revision: number): Promise<Frame[]> {
     const rows = await this.current().stack.frames();
+    this.checkCurrent(revision);
     const frames = rows.map((row) => {
       const frame: Frame = {
         id: this.handleSerial++,
@@ -53,11 +70,7 @@ export class SourceValues {
 
   async expireVariables(): Promise<void> {
     const objects = [...this.variableObjects];
-    this.variableObjects.clear();
-    this.handles.clear();
-    this.framesById.clear();
-    this.framesCache = undefined;
-    this.variableCache.clear();
+    this.clear();
     const active = this.active();
     if (!active) return;
     await active.variables.release(objects);
@@ -93,19 +106,47 @@ export class SourceValues {
 
   async createVariable(expression: string, frame: number): Promise<Variable> {
     if (this.variableObjects.size >= 512) throw new Error('当前暂停最多展开 512 个变量对象，请继续后重试');
-    const record = await this.current().variables.create(expression, frame);
+    const backend = this.current(),
+      revision = this.revision;
+    const record = await backend.variables.create(expression, frame);
+    if (revision !== this.revision || this.variableObjects.size >= 512) {
+      await backend.variables.release([record.id]);
+      this.checkCurrent(revision);
+      throw new Error('当前暂停最多展开 512 个变量对象，请继续后重试');
+    }
     return this.variable(record, frame, expression, true);
   }
 
   async variables(reference: number, start: number, count: number): Promise<Variable[]> {
-    const runtime = this.current(),
-      handle = this.handles.get(reference);
+    const handle = this.handles.get(reference);
     if (!handle) return [];
+    const scope = handle.kind === 'locals' || handle.kind === 'arguments';
+    const key = scope ? `${handle.kind}:${handle.frame}` : `${reference}:${start}:${count}`;
+    const pending = this.pendingVariables.get(key);
+    if (pending) return scope ? (await pending).slice(start, start + count) : pending;
+    const task = this.loadVariables(handle, scope ? 0 : start, scope ? 256 : count, this.revision);
+    this.pendingVariables.set(key, task);
+    void task
+      .finally(() => {
+        if (this.pendingVariables.get(key) === task) this.pendingVariables.delete(key);
+      })
+      .catch(() => undefined);
+    return scope ? (await task).slice(start, start + count) : task;
+  }
+
+  private async loadVariables(
+    handle: Handle,
+    start: number,
+    count: number,
+    revision: number
+  ): Promise<Variable[]> {
+    const runtime = this.current();
     if (handle.kind === 'locals' || handle.kind === 'arguments') {
       const key = `${handle.kind}:${handle.frame}`;
       let variables = this.variableCache.get(key);
       if (!variables) {
         const rows = await runtime.variables.list(handle.frame);
+        this.checkCurrent(revision);
         variables = [];
         for (const row of rows
           .filter((row) => row.argument === (handle.kind === 'arguments'))
@@ -114,6 +155,7 @@ export class SourceValues {
           try {
             variables.push({ ...(await this.createVariable(name, handle.frame)), name });
           } catch (error) {
+            if (revision !== this.revision) throw error;
             variables.push({
               name,
               value: row.value || `<${error instanceof Error ? error.message : String(error)}>`,
@@ -124,7 +166,8 @@ export class SourceValues {
             });
           }
         }
-        this.variableCache.set(key, variables);
+        this.checkCurrent(revision);
+        this.cacheVariables(key, variables);
       }
       return variables.slice(start, start + count);
     }
@@ -133,67 +176,43 @@ export class SourceValues {
         cached = this.variableCache.get(key);
       if (cached) return cached;
       const rows = await runtime.variables.children(handle.object, start, count);
+      this.checkCurrent(revision);
       const variables = rows.map((row) => this.variable(row, handle.frame, row.evaluateName));
-      this.variableCache.set(key, variables);
+      this.cacheVariables(key, variables);
       return variables;
     }
-    const r = await runtime.registers();
-    if (handle.kind === 'registers')
-      return Object.entries(r)
-        .slice(start, start + count)
-        .map(([name, value]) => ({
-          name: name.toUpperCase(),
-          value: hex(value),
-          type: '寄存器（当前 CPU）',
-          variablesReference: 0,
-          evaluateName: `$${name}`,
-          presentationHint: readOnly
-        }));
-    if (handle.kind === 'mode')
-      return Object.entries({
-        MODE: cpuMode(r),
-        栈指针位数: String(stackWidth(r) * 8),
-        指令线性地址: hex(instructionAddress(r)),
-        栈线性地址: hex(stackAddress(r)),
-        'CR0.PG': String((r.cr0 ?? 0) >>> 31),
-        CR3: hex(r.cr3 ?? 0)
-      })
-        .slice(start, start + count)
-        .map(([name, value]) => ({ name, value, variablesReference: 0, presentationHint: readOnly }));
-    const width = cpuMode(r) === 'protected32' ? 4 : 2,
-      pointer = stackWidth(r),
-      sp = pointer === 4 ? r.esp >>> 0 : r.esp & 0xffff,
-      maximum = pointer === 4 ? 0xffffffff : 0xffff;
-    const expandDown = cpuMode(r) !== 'real16' && !!((r.ss_flags ?? 0) & (1 << 10)),
-      lower = expandDown ? (r.ss_limit ?? maximum) + 1 : 0,
-      upper = expandDown ? maximum : Math.min(maximum, r.ss_limit ?? maximum);
-    const address = stackAddress(r),
-      bytes =
-        sp >= lower && sp <= upper
-          ? await runtime.readMemory(address, Math.min(16 * width, upper - sp + 1, 0x100000000 - address))
-          : Buffer.alloc(0),
-      result: Variable[] = [];
-    for (let offset = 0; offset + width <= bytes.length; offset += width)
-      result.push({
-        name: `${hex(r.ss, 4)}:${hex(sp + offset, pointer * 2)}${offset === 0 ? ' ← ESP' : ''}`,
-        value: hex(width === 4 ? bytes.readUInt32LE(offset) : bytes.readUInt16LE(offset), width * 2),
-        type: `uint${width * 8}`,
-        variablesReference: 0,
-        memoryReference: hex(address + offset),
-        presentationHint: readOnly
-      });
-    return result.slice(start, start + count);
+    const variables = await machineVariables(runtime, handle.kind, start, count);
+    this.checkCurrent(revision);
+    return variables;
   }
   constructor(
     private readonly current: () => ValueBackend,
     private readonly active: () => ValueBackend | undefined
   ) {}
   clear(): void {
+    this.revision++;
+    this.pendingFrames = undefined;
+    this.pendingVariables.clear();
     this.handles.clear();
     this.framesById.clear();
     this.framesCache = undefined;
     this.variableCache.clear();
+    this.cachedVariableCount = 0;
     this.variableObjects.clear();
+  }
+  private checkCurrent(revision: number): void {
+    if (revision !== this.revision) throw new Error('变量与调用栈已过期，请在当前暂停后重新读取');
+  }
+  private cacheVariables(key: string, variables: Variable[]): void {
+    this.cachedVariableCount -= this.variableCache.get(key)?.length ?? 0;
+    this.variableCache.set(key, variables);
+    this.cachedVariableCount += variables.length;
+    // Array paging must not retain every visited leaf while the guest stays paused.
+    while (this.variableCache.size > 128 || this.cachedVariableCount > 4096) {
+      const oldest = this.variableCache.keys().next().value!;
+      this.cachedVariableCount -= this.variableCache.get(oldest)!.length;
+      this.variableCache.delete(oldest);
+    }
   }
   private parseAddress(value: string): number | undefined {
     const match = /^(0x[\da-f]+)(?:\s|$)/i.exec(value);

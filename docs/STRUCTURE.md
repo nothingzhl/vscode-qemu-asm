@@ -1,6 +1,6 @@
 # 当前代码结构
 
-分支：`refactor/capability-architecture`。本清单对应第二轮重构后的实际文件，不包含生成的 dist 或 node_modules。
+分支：`refactor/capability-architecture`。本清单对应当前生产文件，包含本轮变量与显示性能整理，不包含生成的 dist 或 node_modules。
 
 | 目录 | 职责 |
 | --- | --- |
@@ -36,6 +36,7 @@ src/
 │   │   └── breakpoints.ts
 │   ├── source/
 │   │   ├── bindings.ts
+│   │   ├── machineValues.ts
 │   │   ├── values.ts
 │   │   └── valuesModel.ts
 │   ├── disassembly.ts
@@ -101,6 +102,7 @@ src/
 │   └── tools.ts
 ├── display/
 │   ├── controller.ts
+│   ├── frames.ts
 │   ├── panel.ts
 │   ├── qmp.ts
 │   └── screen.ts

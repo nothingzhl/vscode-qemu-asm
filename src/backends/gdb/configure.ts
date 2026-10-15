@@ -13,9 +13,21 @@ export async function configureGdb(
   checkCancelled: () => void
 ): Promise<string[]> {
   let registerNames: string[] = [];
+  await client.command('-gdb-set auto-load off');
+  // GDB 9 has no debuginfod feature. Probe its setting rather than treating
+  // arbitrary -gdb-set errors (including a dead MI channel) as compatibility.
+  let debuginfod: 'disabled' | 'unsupported' = 'disabled';
+  let debuginfodReason = '当前 GDB 已明确关闭 debuginfod 联网符号查找';
+  try {
+    await client.command('-gdb-show debuginfod enabled');
+  } catch (error) {
+    if (!/^Undefined show command:\s*"debuginfod(?: enabled)?"\./.test((error as Error).message))
+      throw error;
+    debuginfod = 'unsupported';
+    debuginfodReason = (error as Error).message;
+  }
+  if (debuginfod === 'disabled') await client.command('-gdb-set debuginfod enabled off');
   for (const setting of [
-    'auto-load off',
-    'debuginfod enabled off',
     'may-call-functions off',
     'pagination off',
     'confirm off',
@@ -32,7 +44,8 @@ export async function configureGdb(
   capabilities.record('gdb.mi', {
     state: 'supported',
     evidence: 'protocol',
-    reason: '当前 GDB MI 通道已完成初始化设置与 ELF 符号加载'
+    reason: '当前 GDB MI 通道已完成初始化设置与 ELF 符号加载',
+    details: { debuginfod, debuginfodReason }
   });
   for (const [before, after] of Object.entries(debug.sourceMap ?? {})) {
     await client.command(

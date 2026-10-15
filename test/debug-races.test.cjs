@@ -5,8 +5,6 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const core = require('../dist/project/build');
-const runtimeModule = require('../dist/debug/runtime');
 const { AssemblyDebugAdapter } = require('../dist/debug/adapter');
 const { SourceMap } = require('../dist/debug/listing');
 

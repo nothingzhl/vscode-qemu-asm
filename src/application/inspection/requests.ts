@@ -17,7 +17,7 @@ export function objectArgs(value: unknown): asserts value is object {
 export function unsigned32(value: number, label: string): void {
   boundedInteger(value, 0, 0xffffffff, label);
 }
-export function memoryRange(address: number, count: number): void {
+function memoryRange(address: number, count: number): void {
   unsigned32(address, '内存地址');
   if (address + count > 0x100000000) throw new Error('内存读取不能超出 32 位地址范围');
 }

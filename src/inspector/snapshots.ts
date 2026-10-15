@@ -77,12 +77,17 @@ export class InspectorSnapshots {
             : '';
         return `${value.space}:${value.addressContext}:${physicalPage}:${address}`;
       };
-      const changed = value.bytes.map(
-        (byte, index) => this.seen.has(key(index)) && this.seen.get(key(index)) !== byte
-      );
-      for (let index = 0; index < value.bytes.length; index += 1)
-        this.seen.set(key(index), value.bytes[index]);
-      while (this.seen.size > 4096) this.seen.delete(this.seen.keys().next().value!);
+      const changed = value.bytes.map((byte, index) => {
+        const address = key(index);
+        const previous = this.seen.get(address);
+        this.seen.set(address, byte);
+        return previous !== undefined && previous !== byte;
+      });
+      // Reuse one iterator: restarting it per byte repeatedly scans deleted Map slots.
+      if (this.seen.size > 4096) {
+        const oldest = this.seen.keys();
+        while (this.seen.size > 4096) this.seen.delete(oldest.next().value!);
+      }
       return {
         memory: { ...value, changed },
         stale: false,

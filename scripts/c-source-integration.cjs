@@ -141,6 +141,15 @@ async function exercise(client, fixture, ui) {
   assert.match((await frame(client)).name, /adjust/);
   assert.equal(await scalar(client, 'seed'), 3);
   await client.stoppedAfter('next');
+  // GCC 9 can stop on the function declaration before its first statement;
+  // GCC 14 starts at the assignment. Observe a source location, not a fixed
+  // number of F10 operations or the desired value of an uninitialized local.
+  for (let steps = 0; (await frame(client)).line !== fixture.line('ADJUST_READY') && steps < 3; steps++) {
+    assert.match((await frame(client)).name, /adjust/);
+    await client.stoppedAfter('next');
+  }
+  assert.match((await frame(client)).name, /adjust/);
+  assert.equal((await frame(client)).line, fixture.line('ADJUST_READY'));
   assert.equal(await scalar(client, 'adjustment'), 5);
   await client.stoppedAfter('stepOut');
   assert.match((await frame(client)).name, /compute/);

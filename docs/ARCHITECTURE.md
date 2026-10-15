@@ -2,7 +2,7 @@
 
 本文描述当前代码中的实际边界。目标是按使用场景组合小能力，隔离第三方协议，明确每次会话的资源归属。替换实现发生在组装时；当前没有动态插件注册或运行中热插拔机制。
 
-最新结构见 [代码结构清单](STRUCTURE.md)，本轮验收见 [第二轮重构验证](ARCHITECTURE_REFINEMENT.md)；[首轮验证](ARCHITECTURE_VALIDATION.md) 保留历史记录。
+本文与[代码结构清单](STRUCTURE.md)描述当前架构；工具组合与性能的实际范围分别见[兼容性](COMPATIBILITY.md)和[性能](PERFORMANCE.md)。[首轮验证](ARCHITECTURE_VALIDATION.md)、[第二轮重构验证](ARCHITECTURE_REFINEMENT.md)保留当时的历史环境与结果，不作为当前完整验收。
 
 ## 从哪里开始阅读
 
@@ -27,6 +27,10 @@ flowchart TD
     DAP --> Owner[application/SessionResourceOwner<br/>分配、取消、等待晚到资源]
     Owner --> Ports
     Entry --> Run[application/RunSession]
+    Entry --> DisplaySession[integration/vscode/displaySession]
+    DisplaySession --> Display[display<br/>DisplayController / QemuScreen]
+    Display --> Frames[display/frames<br/>ScreenFrames]
+    Display --> QMP[display/qmp<br/>QmpClient]
     Application --> Ports[ports<br/>读取 / 执行 / 生命周期 / 源码 / 解码]
     DAP --> Ports
     Run --> Ports
@@ -55,6 +59,8 @@ flowchart TD
 `ports` 和 `domain` 不导入具体后端或 VS Code API；`application` 和 DAP 功能不导入具体后端或兼容入口。NASM listing、RSP 编码和 MI 转换分别归属 `backends/nasm`、`backends/rsp`、`backends/gdb`。边界测试检查这些方向，防止后续功能绕过接口拼接原始工具命令。
 
 `project` 管理配置、构建、诊断和安全创建。QEMU 参数生成留在 `backends/qemu/arguments.ts`，没有混入项目通用逻辑。显示控制和观察器仍保留在 `display`、`inspector`，由 VS Code 集成入口连接；VS Code 观察器注册、示例创建及构建诊断分别由 `integration/vscode` 的功能模块负责。`inspector/model.ts` 管理刷新状态；`snapshots.ts` 读取与提交快照；`validation.ts` 校验响应，`types.ts` 定义视图数据。只有确认响应属于当前暂停后才更新内存差异历史。
+
+`application/source/values.ts` 拥有 C 栈帧和变量句柄；[machineValues.ts](../src/application/source/machineValues.ts)单独读取当前 CPU 的寄存器、模式和原始栈，避免把这些状态解释成历史调用帧的数据。[display/frames.ts](../src/display/frames.ts)负责有界图像校验、PNG 编码和单帧复用，不承担 QMP 连接或面板生命周期。
 
 ## 小能力如何组合
 
@@ -108,11 +114,12 @@ sequenceDiagram
     Session-->>Host: 清理完成 / terminated
 ```
 
-- DAP 会话通过 `SessionResourceOwner` 拥有后端及显示资源，另外拥有自己的构建器、映射、断点和缓存。资源分配期间停止，会等待晚到的分配结果并清理，不再先返回、随后遗留资源。信任检查或能力观察失败也释放完整资源对。扩展级输出、诊断、显示控制器与报告文档不由单次后端占有。
-- `DapChannel` 串行化请求和停止处理；epoch 防止旧启动结果写进新会话。停止时先使状态失效，再释放资源。
-- `SourceValues` 每次停止生成新句柄，继续/重启时清除句柄并删除根 varobj；不会把过期 frame ID 解释为新的当前帧。
-- `releaseAll` 等待所有清理动作完成后再报告首个错误，避免一个资源释放失败导致调用方提前返回、另一资源还在清理。
-- `RunSession` 独立拥有无需调试的 VM 和显示资源。停止等待尚未结束的资源分配；退出、失败与显式停止共用一次清理。
+- DAP 会话通过 `SessionResourceOwner` 拥有后端及显示资源，另外拥有自己的构建器、映射、断点和缓存。资源分配期间停止，会等待晚到的分配结果并清理；晚到资源的清理错误向释放调用方报告，在途的重复释放共享同一结果。信任检查或能力观察失败也释放完整资源对。扩展级输出、诊断、显示控制器与报告文档不由单次后端占有。
+- `DapChannel` 串行化请求和停止处理；epoch 防止旧启动结果写进新会话。启动、重启或配置完成失败后走同一清理路径；清理异常会输出诊断，不让队列一直处于拒绝状态而阻断后续请求。停止时先使状态失效，再释放资源。
+- `SourceValues` 在同一暂停代际合并重复栈帧与变量读取，失败后允许重试。继续/重启时增加 revision，失效在途结果、句柄和缓存并删除根 varobj；迟到创建的 varobj 单独释放，不把过期 frame ID 解释为新的当前帧。变量缓存最多保留 128 项且合计不超过 4096 个变量，根 varobj 上限 512，变量句柄上限 4096，避免遍历大数组时无限累积。
+- `ScreenFrames` 仅保留最近一帧 PNG 和对应 PPM 摘要，不保留原始截图。相同内容复用 PNG，面板跳过重复 base64 和 Webview 消息；显式刷新与重开面板可重发最后画面。截图串行队列不保留已完成帧，释放会等待在途截图、清空缓存并删除临时目录。变化画面的摘要 CPU 代价见[性能测量](PERFORMANCE.md)，不将局部优化宣称为整体内存下降。
+- `releaseAll` 等待所有清理动作完成后再报告首个错误，避免一个资源释放失败导致调用方提前返回、另一资源还在清理。DAP 会话无论自然退出、显式停止还是失败，都在清理完成后通过 `finally` 发出 `terminated`；释放后端出错仍会尝试释放构建器。
+- `RunSession` 独立拥有无需调试的 VM 和显示资源。停止等待尚未结束的资源分配；退出、失败与显式停止共用一次清理；并发停止等待同一结果，晚到资源的清理失败向启动和停止双方传播，正常取消与工厂失败分别处理。
 - `QemuVirtualMachine` 单次启动；`Processes` / MI client 负责自己的在途启动和进程树。GDB 后端取消启动后等待已创建的 GDB 清理。
 - 能力事实绑定会话、宿主、工具和机器配置。unknown、supported、unsupported 及证据范围保留；可选解码/显示失败不伪造成核心后端通过。
 
@@ -120,14 +127,14 @@ sequenceDiagram
 
 新增模块围绕独立状态或真实依赖边界拆分：帧读取、变量句柄、断点绑定、MI 解析、MI 传输、物理内存事务、解码器、QEMU 生命周期分别 review。文件短不依靠压行，也不要求一个接口只能对应一个类。
 
-本轮把 250 行以上的文件从 8 个收敛到 4 个，其余生产文件均在 250 行以内。以下状态机保留明确例外，测试中的预算只用于防止无声增长，不代表建议写满预算：
+当前有 4 个生产文件超过 250 行，其余均在 250 行以内。以下状态机保留明确例外，测试中的预算只用于防止无声增长，不代表建议写满预算：
 
 | 文件 | 当前行数 / 预算 | 保留原因与已拆职责 |
 | --- | --- | --- |
-| `integration/dap/assemblyAdapter.ts` | 457 / 460 | 保留启动、暂停、临时断点和 epoch 的协调；listing 加载、源码验证、F10 规划、断点请求和资源归属已拆出 |
-| `integration/dap/sourceAdapter.ts` | 430 / 430 | 保留 C 启动、源码断点更新期间的暂停/恢复与停止事件顺序；请求验证、变量句柄、绑定与资源归属独立 |
+| `integration/dap/assemblyAdapter.ts` | 453 / 460 | 保留启动、暂停、临时断点和 epoch 的协调；listing 加载、源码验证、F10 规划、断点请求和资源归属已拆出 |
+| `integration/dap/sourceAdapter.ts` | 425 / 430 | 保留 C 启动、源码断点更新期间的暂停/恢复与停止事件顺序；请求验证、变量句柄、绑定与资源归属独立 |
 | `backends/qemu/rspBackend.ts` | 379 / 380 | 保留跨硬件断点单步与停止状态机；协议传输/编码/寄存器布局、断点替换、物理内存事务分别独立 |
-| `backends/gdb/qemuBackend.ts` | 361 / 365 | 保留 MI 启动取消、停止事件和同值写监视点恢复；配置、寄存器、内存、源码转换和 MI transport/parser 已拆开 |
+| `backends/gdb/qemuBackend.ts` | 359 / 365 | 保留 MI 启动取消、停止事件和同值写监视点恢复；配置、寄存器、内存、源码转换和 MI transport/parser 已拆开 |
 
 没有把这些状态机再拆成依赖大量私有字段的上下文对象或继承层。它们不作为后续功能的默认容器；新能力仍按独立契约、实现、组装和消费者接入。架构测试同时禁止业务层导入 `debug/` 或 `core.ts` 兼容入口，以及领域/契约反向依赖应用或编辑器层。
 

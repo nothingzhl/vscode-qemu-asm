@@ -24,10 +24,28 @@ export class DapChannel {
   ) {}
 
   handleMessage(message: DebugProtocolMessage): void {
-    if (this.closed || (message as { type?: string }).type !== 'request') return;
+    if (
+      this.closed ||
+      !message ||
+      typeof message !== 'object' ||
+      (message as { type?: string }).type !== 'request'
+    )
+      return;
     const request = message as unknown as Request;
+    if (
+      !Number.isSafeInteger(request.seq) ||
+      request.seq < 0 ||
+      typeof request.command !== 'string' ||
+      !request.command
+    )
+      return;
     this.queue = this.queue.then(async () => {
       try {
+        if (
+          request.arguments !== undefined &&
+          (!request.arguments || typeof request.arguments !== 'object' || Array.isArray(request.arguments))
+        )
+          throw new Error('调试请求参数必须是对象');
         await this.dispatch(request);
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);
@@ -39,13 +57,35 @@ export class DapChannel {
           message: text,
           body: { error: { id: 1, format: text, showUser: !this.inlineErrors.includes(request.command) } }
         });
-        if (['launch', 'restart', 'configurationDone'].includes(request.command)) await this.launchFailed();
+        if (['launch', 'restart', 'configurationDone'].includes(request.command)) await this.finish();
       }
     });
   }
 
   send(message: Record<string, unknown>): void {
     this.events.emit('message', { ...message, seq: this.seq++ } as unknown as DebugProtocolMessage);
+  }
+
+  /** Stop-event failures use the same cleanup path without poisoning later requests. */
+  async fail(error: unknown): Promise<void> {
+    this.output(error);
+    await this.finish();
+  }
+
+  private async finish(): Promise<void> {
+    try {
+      await this.launchFailed();
+    } catch (error) {
+      this.output(new Error(`调试资源清理失败：${error instanceof Error ? error.message : String(error)}`));
+    }
+  }
+
+  private output(error: unknown): void {
+    this.send({
+      type: 'event',
+      event: 'output',
+      body: { category: 'stderr', output: `${error instanceof Error ? error.message : String(error)}\n` }
+    });
   }
 
   close(): void {

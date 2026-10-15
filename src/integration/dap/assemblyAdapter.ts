@@ -107,8 +107,7 @@ export class AssemblyDapAdapter implements DebugAdapter {
   async dispose(): Promise<void> {
     this.disposed = true;
     this.channel.close();
-    await this.finish();
-    await this.options.builder.dispose();
+    await releaseAll([() => this.finish(), () => this.options.builder.dispose()]);
   }
 
   private event(event: string, body: Record<string, unknown> = {}): void {
@@ -179,15 +178,12 @@ export class AssemblyDapAdapter implements DebugAdapter {
         .then(async () => {
           if (epoch === this.epoch) await this.onStopped(event);
         })
-        .catch(async (error) => {
-          this.output(`${String(error)}\n`, 'stderr');
-          await this.finish();
-        });
+        .catch((error) => this.channel.fail(error));
     });
     runtime.on('terminated', (result: { error?: string }) => {
       if (epoch !== this.epoch) return;
       if (result.error) this.output(`${result.error}\n`, 'stderr');
-      void this.finish();
+      void this.finish().catch((error) => this.output(`调试资源清理失败：${String(error)}\n`, 'stderr'));
     });
     await runtime.launch();
     if (this.machine.dataPoints().length) await runtime.setDataBreakpoints(this.machine.dataPoints());
@@ -449,7 +445,7 @@ export class AssemblyDapAdapter implements DebugAdapter {
     if (this.finishing) return this.finishing;
     this.ended = true;
     this.phase = 'ended';
-    this.finishing = this.cleanup().then(() => {
+    this.finishing = this.cleanup().finally(() => {
       this.event('terminated');
     });
     return this.finishing;

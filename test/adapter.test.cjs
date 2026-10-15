@@ -36,7 +36,7 @@ test('stale UI refreshes still reject an untrusted workspace',async()=>{
 test('inspector requests require an actual stopped CPU before reading memory or tables',async()=>{
  const c=client({isTrusted:()=>true,getProject:async()=>{throw new Error('unused');}});
  let reads=0;
- c.adapter.runtime={registers:async()=>{reads++;throw new Error('must not read');},readMemory:async()=>{reads++;throw new Error('must not read');},dispose:async()=>{}};
+ c.adapter.resources.owned={ backend: {registers:async()=>{reads++;throw new Error('must not read');},readMemory:async()=>{reads++;throw new Error('must not read');},dispose:async()=>{}} };
  c.adapter.phase='running';
  for(const command of ['qemuAsm.inspectMemory','qemuAsm.inspectDescriptors','qemuAsm.inspectPaging','disassemble','qemuAsm.disassemble','setInstructionBreakpoints','qemuAsm.instructionBreakpoints','dataBreakpointInfo','setDataBreakpoints','qemuAsm.watchpoints']){
   const response=await c.request(command,{address:0x8000,table:'gdt'});

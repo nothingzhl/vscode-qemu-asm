@@ -69,7 +69,7 @@ export async function execute(processes: Processes, command: string, args: strin
   const run = processes.start(command, args, cwd, log);
   let expired = false;
   let stopped = false;
-  const terminate = () => { if (processes.terminate) processes.terminate(run.child, 'SIGKILL'); else run.child.kill('SIGKILL'); };
+  const terminate = () => processes.terminate(run.child, 'SIGKILL');
   const timer = setTimeout(() => { expired = true; terminate(); }, timeout);
   const cancellation = setInterval(() => { if (cancelled()) { stopped = true; terminate(); } }, 50);
   try { await run.ready; await run.done; if (expired) throw new Error(`${command} 执行超时`); if (stopped || cancelled()) throw new Error('构建已停止'); }

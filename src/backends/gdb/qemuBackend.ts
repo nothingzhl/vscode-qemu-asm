@@ -111,8 +111,6 @@ export class QemuGdbBackend extends EventEmitter {
           '-iex',
           'set auto-load off',
           '-iex',
-          'set debuginfod enabled off',
-          '-iex',
           'set may-call-functions off'
         ],
         this.project.root,

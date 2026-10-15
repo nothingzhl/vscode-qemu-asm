@@ -1,0 +1,837 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-15",
+  "baselineRevision": "acb05af",
+  "candidate": "performance cleanup working tree",
+  "environment": {
+    "os": "Linux x64",
+    "node": "22.23.3",
+    "qemu": "10.0.13",
+    "nasm": "2.16.03",
+    "cpuIsolation": false
+  },
+  "method": {
+    "rounds": 5,
+    "order": "baseline then candidate, repeated five times",
+    "warmupOperations": 1,
+    "forcedGc": "two collections before and after each measured batch",
+    "time": "wall milliseconds and Node process CPU milliseconds",
+    "scope": "Compiled extension modules in Node; QEMU usage reported separately. No VS Code host heap profiling."
+  },
+  "comparison": {
+    "modules": {
+      "before": {
+        "samples": [
+          {
+            "processPeakRssBytes": 148791296,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.17951792,
+                "cpuMs": 237.875,
+                "retainedHeapBytes": 138944,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.46902934999999957,
+                "cpuMs": 47.571,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.4285065799999996,
+                "cpuMs": 238.461,
+                "retainedHeapBytes": 88016,
+                "retainedArrayBufferBytes": 8192,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.0703445799999995,
+                "cpuMs": 293.569,
+                "retainedHeapBytes": 27456,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.5645512676000001,
+                "cpuMs": 2898.919,
+                "retainedHeapBytes": 798592,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 156651520,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.35171021,
+                "cpuMs": 253.597,
+                "retainedHeapBytes": 138944,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.49151523999999996,
+                "cpuMs": 49.791,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.99058805,
+                "cpuMs": 274.278,
+                "retainedHeapBytes": 88016,
+                "retainedArrayBufferBytes": 8192,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 5.26422838,
+                "cpuMs": 344.433,
+                "retainedHeapBytes": 27456,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.6185394096000001,
+                "cpuMs": 3122.228,
+                "retainedHeapBytes": 798304,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 153677824,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 1.98576823,
+                "cpuMs": 219.208,
+                "retainedHeapBytes": 142712,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.5111784499999998,
+                "cpuMs": 51.871,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.7492505900000004,
+                "cpuMs": 293.276,
+                "retainedHeapBytes": 77168,
+                "retainedArrayBufferBytes": 8192,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 4.660210859999999,
+                "cpuMs": 410.522,
+                "retainedHeapBytes": 28208,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.5377917418,
+                "cpuMs": 2739.99,
+                "retainedHeapBytes": 799408,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 148504576,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 1.95777063,
+                "cpuMs": 213.601,
+                "retainedHeapBytes": 142712,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.4605688600000002,
+                "cpuMs": 46.677,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.3079967500000005,
+                "cpuMs": 225.448,
+                "retainedHeapBytes": 77168,
+                "retainedArrayBufferBytes": 8192,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.9917450400000005,
+                "cpuMs": 284.03,
+                "retainedHeapBytes": 28208,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.5316560758,
+                "cpuMs": 2726.597,
+                "retainedHeapBytes": 797896,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 149946368,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.1254545700000005,
+                "cpuMs": 231.718,
+                "retainedHeapBytes": 142712,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.5111814500000003,
+                "cpuMs": 51.863,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.07394851,
+                "cpuMs": 268.006,
+                "retainedHeapBytes": 77168,
+                "retainedArrayBufferBytes": 8192,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.0109210299999996,
+                "cpuMs": 289.53,
+                "retainedHeapBytes": 28208,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.5688883624,
+                "cpuMs": 2930.449,
+                "retainedHeapBytes": 797800,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          }
+        ],
+        "medianProcessPeakRssBytes": 149946368,
+        "medians": [
+          {
+            "name": "encode-640x400",
+            "iterations": 100,
+            "msPerOperation": 2.1254545700000005,
+            "cpuMs": 231.718,
+            "retainedHeapBytes": 142712,
+            "retainedArrayBufferBytes": 16
+          },
+          {
+            "name": "sha256-640x400",
+            "iterations": 100,
+            "msPerOperation": 0.49151523999999996,
+            "cpuMs": 49.791,
+            "retainedHeapBytes": 10848,
+            "retainedArrayBufferBytes": 0
+          },
+          {
+            "name": "static-capture-640x400",
+            "iterations": 100,
+            "msPerOperation": 2.99058805,
+            "cpuMs": 268.006,
+            "retainedHeapBytes": 77168,
+            "retainedArrayBufferBytes": 8192
+          },
+          {
+            "name": "changing-capture-640x400",
+            "iterations": 100,
+            "msPerOperation": 3.0703445799999995,
+            "cpuMs": 293.569,
+            "retainedHeapBytes": 28208,
+            "retainedArrayBufferBytes": 8191
+          },
+          {
+            "name": "memory-snapshot-256-bytes",
+            "iterations": 5000,
+            "msPerOperation": 0.5645512676000001,
+            "cpuMs": 2898.919,
+            "retainedHeapBytes": 798304,
+            "retainedArrayBufferBytes": 0
+          }
+        ]
+      },
+      "after": {
+        "samples": [
+          {
+            "processPeakRssBytes": 157310976,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.5210883,
+                "cpuMs": 267.76,
+                "retainedHeapBytes": 142880,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.46621252000000024,
+                "cpuMs": 47.363,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.9133419099999998,
+                "cpuMs": 85.223,
+                "retainedHeapBytes": 70432,
+                "retainedArrayBufferBytes": 0,
+                "uniqueFrames": 1
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.3797139699999996,
+                "cpuMs": 320.26,
+                "retainedHeapBytes": 26296,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.09115729299999999,
+                "cpuMs": 514.708,
+                "retainedHeapBytes": 797320,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 158298112,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.5810169099999998,
+                "cpuMs": 275.793,
+                "retainedHeapBytes": 142880,
+                "retainedArrayBufferBytes": 4457
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.5211299699999995,
+                "cpuMs": 52.859,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 1.6114401899999995,
+                "cpuMs": 94.581,
+                "retainedHeapBytes": 70432,
+                "retainedArrayBufferBytes": 0,
+                "uniqueFrames": 1
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 4.0265045,
+                "cpuMs": 368.263,
+                "retainedHeapBytes": 26296,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.08626329460000001,
+                "cpuMs": 493.05,
+                "retainedHeapBytes": 797608,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 155553792,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.09919963,
+                "cpuMs": 228.475,
+                "retainedHeapBytes": 142880,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.4686778600000002,
+                "cpuMs": 48.598,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.9606823800000001,
+                "cpuMs": 89.96,
+                "retainedHeapBytes": 70432,
+                "retainedArrayBufferBytes": 0,
+                "uniqueFrames": 1
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.53013926,
+                "cpuMs": 337.258,
+                "retainedHeapBytes": 26296,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.08370543720000001,
+                "cpuMs": 493.862,
+                "retainedHeapBytes": 799048,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 157138944,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.2726596399999996,
+                "cpuMs": 251.154,
+                "retainedHeapBytes": 139176,
+                "retainedArrayBufferBytes": 16
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.47294917,
+                "cpuMs": 47.959,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.8565185299999996,
+                "cpuMs": 83.59,
+                "retainedHeapBytes": 70432,
+                "retainedArrayBufferBytes": 0,
+                "uniqueFrames": 1
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 3.29586659,
+                "cpuMs": 328.839,
+                "retainedHeapBytes": 36392,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.08590399580000001,
+                "cpuMs": 494.781,
+                "retainedHeapBytes": 797176,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 158441472,
+            "scenarios": [
+              {
+                "name": "encode-640x400",
+                "iterations": 100,
+                "msPerOperation": 2.37453201,
+                "cpuMs": 246.182,
+                "retainedHeapBytes": 142880,
+                "retainedArrayBufferBytes": 4457
+              },
+              {
+                "name": "sha256-640x400",
+                "iterations": 100,
+                "msPerOperation": 0.45996880000000034,
+                "cpuMs": 46.889,
+                "retainedHeapBytes": 10848,
+                "retainedArrayBufferBytes": 0
+              },
+              {
+                "name": "static-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 1.77388393,
+                "cpuMs": 94.914,
+                "retainedHeapBytes": 70432,
+                "retainedArrayBufferBytes": 0,
+                "uniqueFrames": 1
+              },
+              {
+                "name": "changing-capture-640x400",
+                "iterations": 100,
+                "msPerOperation": 4.824815630000001,
+                "cpuMs": 340.829,
+                "retainedHeapBytes": 26296,
+                "retainedArrayBufferBytes": 8191,
+                "uniqueFrames": 101
+              },
+              {
+                "name": "memory-snapshot-256-bytes",
+                "iterations": 5000,
+                "msPerOperation": 0.0907444692,
+                "cpuMs": 511.302,
+                "retainedHeapBytes": 798376,
+                "retainedArrayBufferBytes": 0
+              }
+            ]
+          }
+        ],
+        "medianProcessPeakRssBytes": 157310976,
+        "medians": [
+          {
+            "name": "encode-640x400",
+            "iterations": 100,
+            "msPerOperation": 2.37453201,
+            "cpuMs": 251.154,
+            "retainedHeapBytes": 142880,
+            "retainedArrayBufferBytes": 16
+          },
+          {
+            "name": "sha256-640x400",
+            "iterations": 100,
+            "msPerOperation": 0.4686778600000002,
+            "cpuMs": 47.959,
+            "retainedHeapBytes": 10848,
+            "retainedArrayBufferBytes": 0
+          },
+          {
+            "name": "static-capture-640x400",
+            "iterations": 100,
+            "msPerOperation": 0.9606823800000001,
+            "cpuMs": 89.96,
+            "retainedHeapBytes": 70432,
+            "retainedArrayBufferBytes": 0
+          },
+          {
+            "name": "changing-capture-640x400",
+            "iterations": 100,
+            "msPerOperation": 3.53013926,
+            "cpuMs": 337.258,
+            "retainedHeapBytes": 26296,
+            "retainedArrayBufferBytes": 8191
+          },
+          {
+            "name": "memory-snapshot-256-bytes",
+            "iterations": 5000,
+            "msPerOperation": 0.08626329460000001,
+            "cpuMs": 494.781,
+            "retainedHeapBytes": 797608,
+            "retainedArrayBufferBytes": 0
+          }
+        ]
+      }
+    },
+    "real": {
+      "before": {
+        "samples": [
+          {
+            "processPeakRssBytes": 96317440,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 5.160060333333334,
+                "cpuMs": 272.269,
+                "retainedHeapBytes": 234608,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 76
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 94584832,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 7.99462764,
+                "cpuMs": 346.03,
+                "retainedHeapBytes": 237048,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 76
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 94785536,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 5.586683733333333,
+                "cpuMs": 313.565,
+                "retainedHeapBytes": 234624,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 76
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 95895552,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 4.9760866,
+                "cpuMs": 291.354,
+                "retainedHeapBytes": 237560,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 76
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 96083968,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 4.62256324,
+                "cpuMs": 252.793,
+                "retainedHeapBytes": 234608,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 76
+              }
+            ]
+          }
+        ],
+        "medianProcessPeakRssBytes": 95895552,
+        "medians": [
+          {
+            "name": "real-qemu-static-capture",
+            "iterations": 75,
+            "msPerOperation": 5.160060333333334,
+            "cpuMs": 291.354,
+            "retainedHeapBytes": 234624,
+            "retainedArrayBufferBytes": 8208
+          }
+        ]
+      },
+      "after": {
+        "samples": [
+          {
+            "processPeakRssBytes": 91983872,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 3.2578101866666667,
+                "cpuMs": 131.64,
+                "retainedHeapBytes": 155744,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 1
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 92725248,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 3.642219373333333,
+                "cpuMs": 118.339,
+                "retainedHeapBytes": 168128,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 2
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 92016640,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 2.5664585599999996,
+                "cpuMs": 97.552,
+                "retainedHeapBytes": 157816,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 1
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 91992064,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 2.8937862,
+                "cpuMs": 111.135,
+                "retainedHeapBytes": 155744,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 1
+              }
+            ]
+          },
+          {
+            "processPeakRssBytes": 92864512,
+            "scenarios": [
+              {
+                "name": "real-qemu-static-capture",
+                "iterations": 75,
+                "msPerOperation": 4.426776333333334,
+                "cpuMs": 114.406,
+                "retainedHeapBytes": 168704,
+                "retainedArrayBufferBytes": 8208,
+                "uniqueFrames": 2
+              }
+            ]
+          }
+        ],
+        "medianProcessPeakRssBytes": 92016640,
+        "medians": [
+          {
+            "name": "real-qemu-static-capture",
+            "iterations": 75,
+            "msPerOperation": 3.2578101866666667,
+            "cpuMs": 114.406,
+            "retainedHeapBytes": 157816,
+            "retainedArrayBufferBytes": 8208
+          }
+        ]
+      }
+    }
+  },
+  "lifecycle": {
+    "schemaVersion": 1,
+    "timestamp": "2026-10-15T19:11:04.932Z",
+    "environment": {
+      "node": "v22.23.3",
+      "platform": "linux",
+      "arch": "x64"
+    },
+    "scope": "Node process running compiled extension modules; excludes VS Code UI and child processes",
+    "forcedGc": true,
+    "processPeakRssBytes": 117649408,
+    "scenarios": [
+      {
+        "name": "screen-create-capture-dispose",
+        "iterations": 100,
+        "elapsedMs": 405.915166,
+        "msPerOperation": 4.05915166,
+        "cpuMs": 408.239,
+        "retainedHeapBytes": 475848,
+        "retainedArrayBufferBytes": 8208,
+        "before": {
+          "heapUsed": 5085336,
+          "rss": 51949568,
+          "external": 2849608,
+          "arrayBuffers": 786650
+        },
+        "after": {
+          "heapUsed": 5561184,
+          "rss": 98086912,
+          "external": 2857856,
+          "arrayBuffers": 794858
+        },
+        "observed": {
+          "heapUsed": 6616472,
+          "rss": 98086912,
+          "external": 27798664,
+          "arrayBuffers": 25735866
+        }
+      },
+      {
+        "name": "memory-history-create-fill-clear",
+        "iterations": 100,
+        "elapsedMs": 163.42320899999999,
+        "msPerOperation": 1.6342320899999998,
+        "cpuMs": 186.911,
+        "retainedHeapBytes": 20056,
+        "retainedArrayBufferBytes": 0,
+        "before": {
+          "heapUsed": 5591672,
+          "rss": 98320384,
+          "external": 2857656,
+          "arrayBuffers": 794858
+        },
+        "after": {
+          "heapUsed": 5611728,
+          "rss": 115097600,
+          "external": 2857656,
+          "arrayBuffers": 794858
+        },
+        "observed": {
+          "heapUsed": 14049664,
+          "rss": 116916224,
+          "external": 2857656,
+          "arrayBuffers": 794858
+        }
+      }
+    ],
+    "budget": {
+      "retainedHeapBytes": 8388608,
+      "retainedArrayBufferBytes": 8388608
+    },
+    "notes": [
+      "Repeated screen lifecycle uses local file/QMP substitution; it does not start 100 QEMU guests.",
+      "The real-display benchmark and host tests validate transport and guest lifetime separately."
+    ]
+  }
+}

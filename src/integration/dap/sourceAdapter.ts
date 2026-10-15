@@ -22,7 +22,6 @@ interface Request {
   command: string;
   arguments?: Record<string, unknown>;
 }
-export { isSafeCExpression } from '../../domain/source/expression';
 const watchWarning = 'C / GDB 的写入断点在值改变后暂停；同值写入由 GDB 继续执行。读取与读写断点按访问暂停。';
 
 /** DWARF/source DAP implementation consuming typed source-debugging capabilities. */
@@ -107,8 +106,7 @@ export class SourceDapAdapter implements DebugAdapter {
   async dispose(): Promise<void> {
     this.disposed = true;
     this.channel.close();
-    await this.finish();
-    await this.options.builder.dispose();
+    await releaseAll([() => this.finish(), () => this.options.builder.dispose()]);
   }
 
   private event(event: string, body: Record<string, unknown> = {}): void {
@@ -181,15 +179,12 @@ export class SourceDapAdapter implements DebugAdapter {
         .then(async () => {
           if (epoch === this.epoch) await this.onStopped(event);
         })
-        .catch(async (error) => {
-          this.output(`${String(error)}\n`, 'stderr');
-          await this.finish();
-        });
+        .catch((error) => this.channel.fail(error));
     });
     runtime.on('terminated', (result: { error?: string }) => {
       if (epoch !== this.epoch) return;
       if (result.error) this.output(`${result.error}\n`, 'stderr');
-      void this.finish();
+      void this.finish().catch((error) => this.output(`调试资源清理失败：${String(error)}\n`, 'stderr'));
     });
     await runtime.launch();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
@@ -423,7 +418,7 @@ export class SourceDapAdapter implements DebugAdapter {
     if (this.finishing) return this.finishing;
     this.ended = true;
     this.phase = 'ended';
-    return (this.finishing = this.cleanup().then(() => {
+    return (this.finishing = this.cleanup().finally(() => {
       this.event('terminated');
     }));
   }
