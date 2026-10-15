@@ -10,6 +10,7 @@ xor ax, ax
 mov ds, ax
 mov ss, ax
 mov sp, 0x7c00
+xor bp, bp
 cld
 ; COM1: 115200 baud, 8N1, FIFO enabled
 mov dx, 0x3f9
@@ -39,6 +40,13 @@ lodsb
 test al, al
 jz done
 mov bl, al
+call write_char
+jmp next
+; BP 栈帧：暂停在此函数可查看返回地址与栈内存
+write_char:
+push bp
+mov bp, sp
+push ax
 wait_tx:
 mov dx, 0x3fd
 in al, dx
@@ -47,7 +55,9 @@ jz wait_tx
 mov dx, 0x3f8
 mov al, bl
 out dx, al
-jmp next
+pop ax
+pop bp
+ret
 done:
 hlt
 jmp done
@@ -138,7 +148,7 @@ export async function execute(processes: Processes, command: string, args: strin
   catch (error) { if (expired) throw new Error(`${command} 执行超时`); throw error; }
   finally { clearTimeout(timer); }
 }
-export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false): Promise<void> {
+export async function build(project: Project, processes: Processes, log: (text: string) => void, cancelled: () => boolean = () => false, listingPath?: string): Promise<void> {
   const check = () => { if (cancelled()) throw new Error('构建已停止'); };
   check();
   await fs.mkdir(path.dirname(project.image), { recursive: true });
@@ -160,7 +170,7 @@ export async function build(project: Project, processes: Processes, log: (text: 
   try {
     const output = path.join(temp, 'boot.img');
     check();
-    await execute(processes, project.nasm, ['-f', 'bin', project.source, '-o', output], project.root, log);
+    await execute(processes, project.nasm, ['-f', 'bin', project.source, '-o', output, ...(listingPath ? ['-l', listingPath] : [])], project.root, log);
     const bytes = await fs.readFile(output);
     if (bytes.length !== 512 || bytes[510] !== 0x55 || bytes[511] !== 0xaa) throw new Error('引导镜像必须为 512 字节并以 55 aa 结尾');
     check();

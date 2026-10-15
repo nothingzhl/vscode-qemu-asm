@@ -32,7 +32,7 @@ async function main() {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qemu asm host, '));
   try {
     const executable = process.env.VSCODE_EXECUTABLE_PATH || await downloadAndUnzipVSCode(process.env.VSCODE_VERSION || 'stable');
-    for (const phase of ['trusted', 'untrusted', 'resources']) {
+    for (const phase of ['trusted', 'untrusted', 'resources', 'debug']) {
       const root = path.join(temporary, phase, 'workspace with spaces, and commas');
       const other = path.join(temporary, phase, 'other workspace');
       const profile = path.join(temporary, phase, 'profile');

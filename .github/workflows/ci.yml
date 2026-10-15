@@ -44,11 +44,15 @@ jobs:
       - run: npm run test:integration 2>&1 | tee integration.log
         shell: bash
         timeout-minutes: 2
-      - name: Test Linux VS Code extension host
+      - name: Test real QEMU debug adapter
+        run: npm run test:debug 2>&1 | tee debug-integration.log
+        shell: bash
+        timeout-minutes: 3
+      - name: Test Linux VS Code commands and debugger
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
         shell: bash
-      - name: Test macOS / Windows VS Code extension host
+      - name: Test macOS / Windows VS Code commands and debugger
         if: runner.os != 'Linux'
         run: npm run test:host 2>&1 | tee host-test.log
         shell: bash
@@ -59,5 +63,6 @@ jobs:
           name: compatibility-${{ matrix.os }}-${{ matrix.vscode }}
           path: |
             integration.log
+            debug-integration.log
             host-test.log
           if-no-files-found: ignore

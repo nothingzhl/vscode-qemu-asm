@@ -1,8 +1,8 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中创建、构建和运行 x86 NASM 引导扇区项目。",
-  "version": "0.0.1",
+  "description": "在 VS Code 中构建、运行并调试 x86 16 位引导程序，学习寄存器与栈。",
+  "version": "0.1.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -23,7 +23,8 @@
     "check": "tsc --noEmit -p ./",
     "test": "npm run compile && node --test test/*.test.cjs",
     "test:integration": "npm run compile && node scripts/integration.cjs",
-    "test:host": "npm run compile && node scripts/host-test.cjs"
+    "test:host": "npm run compile && node scripts/host-test.cjs",
+    "test:debug": "npm run compile && node scripts/debug-runtime-integration.cjs && node scripts/debug-integration.cjs"
   },
   "contributes": {
     "commands": [
@@ -46,6 +47,10 @@
       {
         "command": "qemuAsm.stop",
         "title": "QEMU Assembly: 停止"
+      },
+      {
+        "command": "qemuAsm.debug",
+        "title": "QEMU Assembly: 开始实模式调试"
       }
     ],
     "configuration": {
@@ -79,7 +84,64 @@
           "description": "附加参数数组，仅支持 -m、-cpu、-smp 及其值；例如 [\"-m\", \"32M\"]。"
         }
       }
-    }
+    },
+    "languages": [
+      {
+        "id": "qemu-asm",
+        "aliases": [
+          "NASM（操作系统学习）"
+        ],
+        "extensions": [
+          ".asm"
+        ]
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "qemu-asm"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "qemu-asm",
+        "label": "QEMU 16 位引导调试",
+        "languages": [
+          "qemu-asm"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": true,
+                "description": "引导到0x7c00后暂停。仅支持BITS 16、ORG 0x7c00的单文件512字节引导程序。"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "qemu-asm",
+            "request": "launch",
+            "name": "操作系统学习：16 位引导调试",
+            "stopOnEntry": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "QEMU 16 位引导调试",
+            "description": "构建并调试所选工作区的引导程序",
+            "body": {
+              "type": "qemu-asm",
+              "request": "launch",
+              "name": "操作系统学习：16 位引导调试",
+              "stopOnEntry": true
+            }
+          }
+        ]
+      }
+    ]
   },
   "devDependencies": {
     "@types/node": "22.20.5",
@@ -93,5 +155,9 @@
       "description": "执行外部工具与创建项目需要工作区信任。"
     },
     "virtualWorkspaces": false
-  }
+  },
+  "activationEvents": [
+    "onDebugResolve:qemu-asm",
+    "onDebugInitialConfigurations"
+  ]
 }
