@@ -2,7 +2,7 @@
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
   "description": "在 VS Code 中调试 x86 汇编与 C 内核，支持 ELF/DWARF 源码、变量、分页与 QEMU 显示器。",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {

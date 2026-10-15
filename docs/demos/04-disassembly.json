@@ -1,0 +1,241 @@
+{
+  "title": "反汇编、地址断点与无源码 F10",
+  "id": "04-disassembly",
+  "capturedAt": "2026-10-15T15:53:35.374Z",
+  "productCommit": "1f90b0b125b92aeda989b2902ca38208e50d3ae8",
+  "extensionVersion": "0.7.0",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 26.278045329999998
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 26.583
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 9,
+    "previewSeconds": 12
+  },
+  "captions": [
+    {
+      "time": 0.00006568700000025274,
+      "text": "反汇编、地址断点与无源码 F10"
+    },
+    {
+      "time": 0.5015607220000001,
+      "text": "32 位保护模式：直接查看实时机器码，无需源码映射"
+    },
+    {
+      "time": 4.502273681,
+      "text": "输入地址跳转：定位 CALL 指令"
+    },
+    {
+      "time": 7.598344343000001,
+      "text": "点击断点栏设置地址断点，然后继续执行"
+    },
+    {
+      "time": 9.828033927,
+      "text": "真实 QEMU 已命中 CALL：左侧寄存器与 PC 同步更新"
+    },
+    {
+      "time": 13.829857878999999,
+      "text": "F10 执行整个 CALL / RET：EAX 从 64 变成 65"
+    },
+    {
+      "time": 19.020123821000002,
+      "text": "单步执行 INC：观察真实数据变化"
+    },
+    {
+      "time": 22.202335598,
+      "text": "点击断点栏删除地址断点"
+    }
+  ],
+  "actions": [
+    {
+      "time": 9.770827492,
+      "action": "continue",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x100005",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x100005"
+        },
+        "value": 0,
+        "eax": "0x0040",
+        "watches": {
+          "breakpoints": []
+        },
+        "instructions": {
+          "breakpoints": [
+            {
+              "id": 1001,
+              "address": 1048581,
+              "verified": true,
+              "origin": "custom"
+            }
+          ]
+        },
+        "stop": {
+          "reason": "breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x00100005 → 0x100005",
+          "hitBreakpointIds": [
+            1001
+          ]
+        }
+      }
+    },
+    {
+      "time": 13.998725494999999,
+      "action": "next",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000A",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000A"
+        },
+        "value": 0,
+        "eax": "0x0041",
+        "watches": {
+          "breakpoints": []
+        },
+        "instructions": {
+          "breakpoints": [
+            {
+              "id": 1001,
+              "address": 1048581,
+              "verified": true,
+              "origin": "custom"
+            }
+          ]
+        },
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x0010000A → 0x10000A"
+        }
+      }
+    },
+    {
+      "time": 19.183700434,
+      "action": "step",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000C",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000C"
+        },
+        "value": 1,
+        "eax": "0x0041",
+        "watches": {
+          "breakpoints": []
+        },
+        "instructions": {
+          "breakpoints": [
+            {
+              "id": 1001,
+              "address": 1048581,
+              "verified": true,
+              "origin": "custom"
+            }
+          ]
+        },
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x0010000C → 0x10000C"
+        }
+      }
+    },
+    {
+      "time": 22.379481431,
+      "action": "state",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000C",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000C"
+        },
+        "value": 1,
+        "eax": "0x0041",
+        "watches": {
+          "breakpoints": []
+        },
+        "instructions": {
+          "breakpoints": []
+        },
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x0010000C → 0x10000C"
+        }
+      }
+    }
+  ],
+  "initialEvidence": {
+    "id": "04-disassembly",
+    "vscodeVersion": "1.142.0",
+    "codeAddress": 1048576,
+    "dataAddress": 1114112,
+    "pc": 1048576,
+    "mode": "protected32",
+    "source": "/tmp/qemu-feature-demo-hXkCCL/workspace/machine-debug/live-payload.asm",
+    "initial": {
+      "frame": {
+        "id": 1,
+        "name": "当前指令 0x100000",
+        "line": 1,
+        "column": 1,
+        "instructionPointerReference": "0x100000"
+      },
+      "value": 0,
+      "eax": "0x0010",
+      "watches": {
+        "breakpoints": []
+      },
+      "instructions": {
+        "breakpoints": []
+      },
+      "stop": {
+        "reason": "breakpoint",
+        "threadId": 1,
+        "allThreadsStopped": true,
+        "description": "protected32 0x0008:0x00100000 → 0x100000",
+        "hitBreakpointIds": [
+          1000
+        ]
+      }
+    },
+    "sourceOfEvidence": "Actual native VS Code, inline DAP, real QEMU TCG and VGA memory; no substituted DOM, debugger or guest data.",
+    "extensionVersion": "0.7.0"
+  },
+  "recordingScript": "scripts/demos/disassembly.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}

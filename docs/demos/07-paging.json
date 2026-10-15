@@ -1,0 +1,189 @@
+{
+  "title": "分页、地址转换与物理内存",
+  "id": "07-paging",
+  "capturedAt": "2026-10-15T15:54:12.632Z",
+  "productCommit": "1f90b0b125b92aeda989b2902ca38208e50d3ae8",
+  "extensionVersion": "0.7.0",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 29.794192643000002
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 30.083
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 2,
+    "previewSeconds": 12
+  },
+  "captions": [
+    {
+      "time": 0.00007405000000107975,
+      "text": "分页、地址转换与物理内存"
+    },
+    {
+      "time": 0.5010972660000007,
+      "text": "分页已开启：CR3 → 页目录项 → 页表项 → 物理地址"
+    },
+    {
+      "time": 4.5086618419999995,
+      "text": "同一套页表也解释代码页权限：此映射只允许管理态访问"
+    },
+    {
+      "time": 7.602292124000002,
+      "text": "只读页面：CR0.WP 开启时，管理态写入同样被禁止"
+    },
+    {
+      "time": 10.693050227000002,
+      "text": "缺页会明确指出 P=0，不会伪造物理地址"
+    },
+    {
+      "time": 13.781882507,
+      "text": "PSE 4 MiB 大页：由页目录直接完成转换"
+    },
+    {
+      "time": 17.870148428,
+      "text": "虚拟地址 0xC0100000：查看内核刚刚写入的真实数据"
+    },
+    {
+      "time": 21.966908543,
+      "text": "切换物理地址 0x00210000：两个地址访问的是同一块 RAM"
+    },
+    {
+      "time": 26.066252885,
+      "text": "回到页表视图：映射关系、页标志与权限保持可见"
+    }
+  ],
+  "actions": [],
+  "initialEvidence": {
+    "source": "/tmp/qemu-feature-demo-3w9VPg/workspace/nonidentity paging/stage2.asm",
+    "line": 70,
+    "pc": 3221225484,
+    "linearAddress": 3222274048,
+    "physicalAddress": 2162688,
+    "codeAddress": 3221225472,
+    "codePhysicalAddress": 2097152,
+    "readonlyAddress": 3222278144,
+    "unmappedAddress": 3222282240,
+    "bigAddress": 2147483939,
+    "bigPhysicalAddress": 4194595,
+    "cr3": 1048576,
+    "page": {
+      "address": 3222274048,
+      "mode": "protected32",
+      "pagingEnabled": true,
+      "format": "legacy32",
+      "cr0": 2147549201,
+      "cr3": 1048576,
+      "cr4": 16,
+      "wp": true,
+      "pse": true,
+      "directoryIndex": 768,
+      "tableIndex": 256,
+      "offset": 0,
+      "status": "mapped",
+      "warnings": [
+        "此视图读取当前页表内存，不读取 CPU 的 TLB；修改页表后可能需要 INVLPG 或重新加载 CR3，CPU 缓存的转换才会更新。"
+      ],
+      "explanation": "4 KiB 页转换完成。页级权限：允许用户态读取，R/W=1；CR0.WP=1，监督态可写。非 PAE 页表没有 NX 位；此结果不代替段权限、CPL 或其他 CPU 保护检查。",
+      "directoryBase": 1048576,
+      "pde": {
+        "level": "directory",
+        "index": 768,
+        "address": 1051648,
+        "raw": 1056807,
+        "present": true,
+        "writable": true,
+        "user": true,
+        "writeThrough": false,
+        "cacheDisable": false,
+        "accessed": true,
+        "pageSize": false,
+        "base": 1056768
+      },
+      "pte": {
+        "level": "table",
+        "index": 256,
+        "address": 1057792,
+        "raw": 2162791,
+        "present": true,
+        "writable": true,
+        "user": true,
+        "writeThrough": false,
+        "cacheDisable": false,
+        "accessed": true,
+        "dirty": true,
+        "global": false,
+        "pat": false,
+        "base": 2162688
+      },
+      "pageSize": 4096,
+      "physicalAddress": 2162688,
+      "effective": {
+        "user": true,
+        "writable": true,
+        "supervisorRead": true,
+        "supervisorWrite": true,
+        "userRead": true,
+        "userWrite": true
+      }
+    },
+    "memory": {
+      "address": 3222274048,
+      "count": 16,
+      "bytes": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "mode": "protected32",
+      "follow": "address",
+      "space": "virtual",
+      "pagingEnabled": true,
+      "cr3": 1048576,
+      "cr4": 16,
+      "addressContext": "virtual:legacy32:1048576:16",
+      "pageMappings": [
+        {
+          "virtualPage": 3222274048,
+          "physicalPage": 2162688
+        }
+      ],
+      "registers": {
+        "esp": 3223326720,
+        "ebp": 0,
+        "ss": 16,
+        "ss_base": 0
+      }
+    },
+    "vscodeVersion": "1.142.0",
+    "sourceOfEvidence": "Actual QEMU CR0.PG=1; nonidentity physical page tables and real guest RAM. No data mocks.",
+    "extensionVersion": "0.7.0"
+  },
+  "recordingScript": "scripts/demos/paging.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}

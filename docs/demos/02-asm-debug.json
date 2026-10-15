@@ -1,0 +1,6405 @@
+{
+  "title": "汇编调试：从实模式进入保护模式",
+  "id": "02-asm-debug",
+  "capturedAt": "2026-10-15T15:54:53.533Z",
+  "productCommit": "1f90b0b125b92aeda989b2902ca38208e50d3ae8",
+  "extensionVersion": "0.7.0",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 27.480446854999993
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 27.583
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 16,
+    "previewSeconds": 11.582999999999998
+  },
+  "captions": [
+    {
+      "time": 0.00008014899999943736,
+      "text": "汇编调试：从实模式进入保护模式"
+    },
+    {
+      "time": 0.5009400389999992,
+      "text": "源码断点暂停在 MOV CR0：当前仍为 16 位实模式"
+    },
+    {
+      "time": 3.5024541129999998,
+      "text": "F11 写入 CR0.PE：观察 CPU 模式与当前源码行"
+    },
+    {
+      "time": 7.116498964000001,
+      "text": "再单步执行远跳转：进入 32 位保护模式"
+    },
+    {
+      "time": 10.781693312000002,
+      "text": "继续到嵌套函数断点：真实 EBP 调用栈和 QEMU 画面"
+    },
+    {
+      "time": 15.430633036999998,
+      "text": "SS:ESP 栈内存随暂停位置更新；F10 逐条执行"
+    },
+    {
+      "time": 22.481971944999998,
+      "text": "Shift+F11 跳出嵌套调用：返回地址与调用栈同步变化"
+    }
+  ],
+  "actions": [
+    {
+      "time": 3.665475907,
+      "action": "motion",
+      "args": {
+        "kind": "stepIn",
+        "expectLine": "farJump"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected16 0x0000:0x0000803F → 0x803F"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x803F",
+            "line": 33,
+            "column": 1,
+            "instructionPointerReference": "0x803F",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x0011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x8000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03FC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0x7C00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x803F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003FC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x00008000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x00007C00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x0000803F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000006",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00009B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x000003FF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    },
+    {
+      "time": 7.281308628000001,
+      "action": "motion",
+      "args": {
+        "kind": "stepIn"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x00008066 → 0x8066"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x8066",
+            "line": 48,
+            "column": 1,
+            "instructionPointerReference": "0x8066",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x0011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x8000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03FC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0x7C00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x8066",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003FC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x00008000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x00007C00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x00008066",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000006",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0008",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00CF9A00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00009300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x000003FF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    },
+    {
+      "time": 10.944834678000001,
+      "action": "motion",
+      "args": {
+        "kind": "continue",
+        "expectLine": "nested"
+      },
+      "result": {
+        "stop": {
+          "reason": "breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x000080D3 → 0x80D3"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x80D3",
+            "line": 104,
+            "column": 1,
+            "instructionPointerReference": "0x80D3",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 2,
+            "name": "调用者（EBP 链） 0x80C3",
+            "line": 93,
+            "column": 1,
+            "instructionPointerReference": "0x80C3",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 3,
+            "name": "调用者（EBP 链） 0x80B2",
+            "line": 83,
+            "column": 1,
+            "instructionPointerReference": "0x80B2",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x8314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x8108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x80D3",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00008314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00008108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x000080D3",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000046",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0008",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00CF9A00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x000080E0",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x0000001F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    },
+    {
+      "time": 15.676895555000002,
+      "action": "motion",
+      "args": {
+        "kind": "next"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x000080D4 → 0x80D4"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x80D4",
+            "line": 106,
+            "column": 1,
+            "instructionPointerReference": "0x80D4",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 2,
+            "name": "调用者（EBP 链） 0x80C3",
+            "line": 93,
+            "column": 1,
+            "instructionPointerReference": "0x80C3",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 3,
+            "name": "调用者（EBP 链） 0x80B2",
+            "line": 83,
+            "column": 1,
+            "instructionPointerReference": "0x80B2",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x8314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x8108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x80D4",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00008314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00008108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x000080D4",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000046",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0008",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00CF9A00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x000080E0",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x0000001F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    },
+    {
+      "time": 19.170054039000004,
+      "action": "motion",
+      "args": {
+        "kind": "next"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x000080DA → 0x80DA"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x80DA",
+            "line": 108,
+            "column": 1,
+            "instructionPointerReference": "0x80DA",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 2,
+            "name": "调用者（EBP 链） 0x80C3",
+            "line": 93,
+            "column": 1,
+            "instructionPointerReference": "0x80C3",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 3,
+            "name": "调用者（EBP 链） 0x80B2",
+            "line": 83,
+            "column": 1,
+            "instructionPointerReference": "0x80B2",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x8314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x8108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0xFFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x80DA",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x0008FFEC",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00008314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00008108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x000080DA",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0008",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00CF9A00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x000080E0",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x0000001F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    },
+    {
+      "time": 22.644070101999997,
+      "action": "motion",
+      "args": {
+        "kind": "stepOut"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "protected32 0x0008:0x000080C3 → 0x80C3"
+        },
+        "stack": [
+          {
+            "id": 1,
+            "name": "当前指令 0x80C3",
+            "line": 93,
+            "column": 1,
+            "instructionPointerReference": "0x80C3",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          },
+          {
+            "id": 2,
+            "name": "调用者（EBP 链） 0x80B2",
+            "line": 83,
+            "column": 1,
+            "instructionPointerReference": "0x80B2",
+            "source": {
+              "name": "stage2.asm",
+              "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+            }
+          }
+        ],
+        "registers": [
+          {
+            "name": "AX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BX",
+            "value": "0x3344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CX",
+            "value": "0x0002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DX",
+            "value": "0x03F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "dx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SI",
+            "value": "0x8314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "si",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DI",
+            "value": "0x8108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "di",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "BP",
+            "value": "0xFFF8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "bp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SP",
+            "value": "0xFFF4",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "sp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IP",
+            "value": "0x80C3",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EAX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eax",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ECX",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ecx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDX",
+            "value": "0x000003F8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBX",
+            "value": "0x11223344",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebx",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESP",
+            "value": "0x0008FFF4",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EBP",
+            "value": "0x0008FFF8",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ebp",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ESI",
+            "value": "0x00008314",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "esi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EDI",
+            "value": "0x00008108",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "edi",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EIP",
+            "value": "0x000080C3",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "eip",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFLAGS",
+            "value": "0x00000002",
+            "type": "寄存器",
+            "variablesReference": 4,
+            "evaluateName": "eflags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS",
+            "value": "0x0008",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES",
+            "value": "0x00000010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS",
+            "value": "0x0010",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "K_GS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "k_gs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR0",
+            "value": "0x00000011",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr0",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR2",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr2",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR3",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr3",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR4",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr4",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CR8",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cr8",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "EFER",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "efer",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FCTRL",
+            "value": "0x037F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fctrl",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FSTAT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fstat",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FTAG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ftag",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FISEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fiseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FIOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fioff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOSEG",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "foseg",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOOFF",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fooff",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FOP",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fop",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "MXCSR",
+            "value": "0x1F80",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "mxcsr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SMM",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "smm",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "CS_FLAGS",
+            "value": "0x00CF9A00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "cs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "SS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ss_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "DS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ds_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "ES_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "es_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "FS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "fs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_LIMIT",
+            "value": "0xFFFFFFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GS_FLAGS",
+            "value": "0x00CF9300",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gs_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_BASE",
+            "value": "0x00008048",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "GDTR_LIMIT",
+            "value": "0x00000017",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "gdtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_BASE",
+            "value": "0x000080E0",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "IDTR_LIMIT",
+            "value": "0x0000001F",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "idtr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "LDT_FLAGS",
+            "value": "0x00008200",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "ldt_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR",
+            "value": "0x0000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_BASE",
+            "value": "0x00000000",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_base",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_LIMIT",
+            "value": "0x0000FFFF",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_limit",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          },
+          {
+            "name": "TR_FLAGS",
+            "value": "0x00008B00",
+            "type": "寄存器",
+            "variablesReference": 0,
+            "evaluateName": "tr_flags",
+            "presentationHint": {
+              "attributes": [
+                "readOnly"
+              ]
+            }
+          }
+        ],
+        "failures": []
+      }
+    }
+  ],
+  "initialEvidence": {
+    "vscodeVersion": "1.142.0",
+    "source": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm",
+    "lines": {
+      "writeCR0": 32,
+      "farJump": 33,
+      "nested": 104
+    },
+    "stack": [
+      {
+        "id": 1,
+        "name": "当前指令 0x803C",
+        "line": 32,
+        "column": 1,
+        "instructionPointerReference": "0x803C",
+        "source": {
+          "name": "stage2.asm",
+          "path": "/tmp/qemu-feature-demo-ahoIMD/workspace/Protected mode kernel/stage2.asm"
+        }
+      }
+    ],
+    "registers": [
+      {
+        "name": "AX",
+        "value": "0x0011",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ax",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "BX",
+        "value": "0x8000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "bx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CX",
+        "value": "0x0002",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DX",
+        "value": "0x03FC",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "dx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SI",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "si",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DI",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "di",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "BP",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "bp",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SP",
+        "value": "0x7C00",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "sp",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "IP",
+        "value": "0x803C",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ip",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EAX",
+        "value": "0x00000011",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "eax",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ECX",
+        "value": "0x00000002",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ecx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EDX",
+        "value": "0x000003FC",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "edx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EBX",
+        "value": "0x00008000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ebx",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ESP",
+        "value": "0x00007C00",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "esp",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EBP",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ebp",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ESI",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "esi",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EDI",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "edi",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EIP",
+        "value": "0x0000803C",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "eip",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EFLAGS",
+        "value": "0x00000006",
+        "type": "寄存器",
+        "variablesReference": 4,
+        "evaluateName": "eflags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CS",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cs",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SS",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ss",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DS",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ds",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ES",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "es",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FS",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fs",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GS",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gs",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fs_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gs_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "K_GS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "k_gs_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CR0",
+        "value": "0x00000010",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cr0",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CR2",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cr2",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CR3",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cr3",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CR4",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cr4",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CR8",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cr8",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "EFER",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "efer",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FCTRL",
+        "value": "0x037F",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fctrl",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FSTAT",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fstat",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FTAG",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ftag",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FISEG",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fiseg",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FIOFF",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fioff",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FOSEG",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "foseg",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FOOFF",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fooff",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FOP",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fop",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "MXCSR",
+        "value": "0x1F80",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "mxcsr",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SMM",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "smm",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cs_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CS_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cs_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "CS_FLAGS",
+        "value": "0x00009B00",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "cs_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ss_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SS_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ss_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "SS_FLAGS",
+        "value": "0x00009300",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ss_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DS_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ds_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DS_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ds_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "DS_FLAGS",
+        "value": "0x00009300",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ds_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ES_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "es_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ES_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "es_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "ES_FLAGS",
+        "value": "0x00009300",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "es_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FS_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fs_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "FS_FLAGS",
+        "value": "0x00009300",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "fs_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GS_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gs_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GS_FLAGS",
+        "value": "0x00009300",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gs_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GDTR_BASE",
+        "value": "0x00008048",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gdtr_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "GDTR_LIMIT",
+        "value": "0x00000017",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "gdtr_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "IDTR_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "idtr_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "IDTR_LIMIT",
+        "value": "0x000003FF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "idtr_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "LDT",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ldt",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "LDT_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ldt_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "LDT_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ldt_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "LDT_FLAGS",
+        "value": "0x00008200",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "ldt_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "TR",
+        "value": "0x0000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "tr",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "TR_BASE",
+        "value": "0x00000000",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "tr_base",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "TR_LIMIT",
+        "value": "0x0000FFFF",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "tr_limit",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      },
+      {
+        "name": "TR_FLAGS",
+        "value": "0x00008B00",
+        "type": "寄存器",
+        "variablesReference": 0,
+        "evaluateName": "tr_flags",
+        "presentationHint": {
+          "attributes": [
+            "readOnly"
+          ]
+        }
+      }
+    ],
+    "failures": [],
+    "runtime": "Real NASM flat binaries and QEMU TCG, real16 → protected32",
+    "proof": "Native source breakpoints, single-step, register values, EBP call chain and VGA screen are live product UI.",
+    "extensionVersion": "0.7.0"
+  },
+  "recordingScript": "scripts/demos/asm-debug.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}

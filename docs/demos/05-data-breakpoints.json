@@ -1,0 +1,252 @@
+{
+  "title": "读取、写入与访问数据断点",
+  "id": "05-data-breakpoints",
+  "capturedAt": "2026-10-15T15:53:34.324Z",
+  "productCommit": "1f90b0b125b92aeda989b2902ca38208e50d3ae8",
+  "extensionVersion": "0.7.0",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 26.332449915000005
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 26.583
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 6,
+    "previewSeconds": 12
+  },
+  "captions": [
+    {
+      "time": 0.00010471599999982572,
+      "text": "读取、写入与访问数据断点"
+    },
+    {
+      "time": 0.5081990650000007,
+      "text": "监视真实内存 0x00110000：初始值为 0"
+    },
+    {
+      "time": 3.5095376899999993,
+      "text": "添加 4 字节写入断点"
+    },
+    {
+      "time": 5.7820359969999995,
+      "text": "写入完成后自动暂停：数据从 0 变为 1"
+    },
+    {
+      "time": 9.869312605000001,
+      "text": "内存视图高亮实际发生变化的字节"
+    },
+    {
+      "time": 14.043214019,
+      "text": "切换读取断点：MOV 读取同一地址时暂停"
+    },
+    {
+      "time": 18.427342313,
+      "text": "读取或写入断点：继续运行，再次捕获访问"
+    },
+    {
+      "time": 22.700592529,
+      "text": "访问类型、命中地址和暂停 PC 都来自真实 QEMU"
+    }
+  ],
+  "actions": [
+    {
+      "time": 5.679887944,
+      "action": "continue",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000B",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000B"
+        },
+        "value": 1,
+        "eax": "0x11223344",
+        "watches": {
+          "breakpoints": [
+            {
+              "address": 1114112,
+              "size": 4,
+              "access": "write",
+              "id": 1001,
+              "dataId": "qemu-mem:110000:4",
+              "verified": true,
+              "origin": "custom"
+            }
+          ],
+          "lastHit": {
+            "address": 1114112,
+            "access": "write",
+            "ids": [
+              1001
+            ],
+            "pc": 1048587
+          }
+        },
+        "instructions": {
+          "breakpoints": []
+        },
+        "stop": {
+          "reason": "data breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "数据断点 0x110000（write）；访问已完成，protected32 0x0008:0x0010000B → 0x10000B",
+          "hitBreakpointIds": [
+            1001
+          ]
+        }
+      }
+    },
+    {
+      "time": 14.306474436999999,
+      "action": "continue",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000D",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000D"
+        },
+        "value": 1,
+        "eax": "0x0001",
+        "watches": {
+          "breakpoints": [
+            {
+              "address": 1114112,
+              "size": 4,
+              "access": "read",
+              "id": 1002,
+              "dataId": "qemu-mem:110000:4",
+              "verified": true,
+              "origin": "custom"
+            }
+          ],
+          "lastHit": {
+            "address": 1114112,
+            "access": "read",
+            "ids": [
+              1002
+            ],
+            "pc": 1048589
+          }
+        },
+        "instructions": {
+          "breakpoints": []
+        },
+        "stop": {
+          "reason": "data breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "数据断点 0x110000（read）；访问已完成，protected32 0x0008:0x0010000D → 0x10000D",
+          "hitBreakpointIds": [
+            1002
+          ]
+        }
+      }
+    },
+    {
+      "time": 18.604011855999996,
+      "action": "continue",
+      "args": {},
+      "result": {
+        "frame": {
+          "id": 1,
+          "name": "当前指令 0x10000B",
+          "line": 1,
+          "column": 1,
+          "instructionPointerReference": "0x10000B"
+        },
+        "value": 2,
+        "eax": "0x0001",
+        "watches": {
+          "breakpoints": [
+            {
+              "address": 1114112,
+              "size": 4,
+              "access": "readWrite",
+              "id": 1003,
+              "dataId": "qemu-mem:110000:4",
+              "verified": true,
+              "origin": "custom"
+            }
+          ],
+          "lastHit": {
+            "address": 1114112,
+            "access": "readWrite",
+            "ids": [
+              1003
+            ],
+            "pc": 1048587
+          }
+        },
+        "instructions": {
+          "breakpoints": []
+        },
+        "stop": {
+          "reason": "data breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "数据断点 0x110000（readWrite）；访问已完成，protected32 0x0008:0x0010000B → 0x10000B",
+          "hitBreakpointIds": [
+            1003
+          ]
+        }
+      }
+    }
+  ],
+  "initialEvidence": {
+    "id": "05-data-breakpoints",
+    "vscodeVersion": "1.142.0",
+    "codeAddress": 1048576,
+    "dataAddress": 1114112,
+    "pc": 1048585,
+    "mode": "protected32",
+    "source": "/tmp/qemu-feature-demo-IImBIu/workspace/machine-debug/live-payload.asm",
+    "initial": {
+      "frame": {
+        "id": 1,
+        "name": "当前指令 0x100009",
+        "line": 1,
+        "column": 1,
+        "instructionPointerReference": "0x100009"
+      },
+      "value": 0,
+      "eax": "0x11223344",
+      "watches": {
+        "breakpoints": []
+      },
+      "instructions": {
+        "breakpoints": []
+      },
+      "stop": {
+        "reason": "breakpoint",
+        "threadId": 1,
+        "allThreadsStopped": true,
+        "description": "protected32 0x0008:0x00100009 → 0x100009",
+        "hitBreakpointIds": [
+          1000
+        ]
+      }
+    },
+    "sourceOfEvidence": "Actual native VS Code, inline DAP, real QEMU TCG and VGA memory; no substituted DOM, debugger or guest data.",
+    "extensionVersion": "0.7.0"
+  },
+  "recordingScript": "scripts/demos/data-breakpoints.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}

@@ -127,7 +127,9 @@ export class CSourceDebugAdapter implements DebugAdapter {
       try { await this.dispatch(request); }
       catch (error) {
         const text = error instanceof Error ? error.message : String(error);
-        const inline = ['qemuAsm.inspectMemory', 'qemuAsm.inspectDescriptors', 'qemuAsm.inspectPaging', 'qemuAsm.disassemble'].includes(request.command);
+        // VS Code can finish automatic reads for an old selected frame after a
+        // step. Report read errors in their view/console without notifications.
+        const inline = ['stackTrace', 'scopes', 'variables', 'evaluate', 'qemuAsm.inspectMemory', 'qemuAsm.inspectDescriptors', 'qemuAsm.inspectPaging', 'qemuAsm.disassemble'].includes(request.command);
         this.send({ type: 'response', request_seq: request.seq, command: request.command, success: false, message: text, body: { error: { id: 1, format: text, showUser: !inline } } });
         if (['launch', 'restart', 'configurationDone'].includes(request.command)) await this.finish();
       }
@@ -399,7 +401,10 @@ export class CSourceDebugAdapter implements DebugAdapter {
       }
       case 'scopes': {
         this.trust(); if (this.phase !== 'stopped') { this.response(request, { scopes: [] }); return; }
-        const frame = this.frame(args.frameId);
+        const frame = typeof args.frameId === 'number' ? this.framesById.get(args.frameId) : this.framesCache?.[0];
+        // Expired frame IDs belong to a previous stop. Never resolve them to
+        // the new current frame or create handles for delayed native UI reads.
+        if (!frame) { this.response(request, { scopes: [] }); return; }
         const scopes = [{ name: '局部变量', variablesReference: this.handle({ kind: 'locals', frame: frame.level }), expensive: false }, { name: '参数', variablesReference: this.handle({ kind: 'arguments', frame: frame.level }), expensive: false }];
         if (frame.level === 0) scopes.push({ name: '寄存器（当前 CPU）', variablesReference: this.handle({ kind: 'registers', frame: 0 }), expensive: false }, { name: '栈内存 SS:SP / SS:ESP', variablesReference: this.handle({ kind: 'stack', frame: 0 }), expensive: false }, { name: 'CPU 模式与地址', variablesReference: this.handle({ kind: 'mode', frame: 0 }), expensive: false });
         this.response(request, { scopes }); return;
@@ -433,7 +438,10 @@ export class CSourceDebugAdapter implements DebugAdapter {
         this.trust(); if (this.phase !== 'stopped') { this.response(request, { result: 'CPU 未暂停；暂停后更新', variablesReference: 0 }); return; }
         const expression = String(args.expression ?? '').trim();
         if (!isSafeCExpression(expression)) throw new Error('仅支持只读 C 表达式：变量、成员、指针、下标和算术；不允许赋值、递增或函数调用');
-        await this.frames(); const frame = this.frame(args.frameId), value = await this.createVariable(expression, frame.level);
+        // Validate an explicit frame before reading GDB: an expired frame must
+        // not silently select the current frame or create a new varobj.
+        if (typeof args.frameId !== 'number') await this.frames();
+        const frame = this.frame(args.frameId), value = await this.createVariable(expression, frame.level);
         this.response(request, { result: value.value, type: value.type, variablesReference: value.variablesReference, ...(value.memoryReference ? { memoryReference: value.memoryReference } : {}), ...(value.indexedVariables === undefined ? {} : { indexedVariables: value.indexedVariables }), ...(value.namedVariables === undefined ? {} : { namedVariables: value.namedVariables }) }); return;
       }
       case 'restart': if (this.ended) throw new Error('调试会话已结束，请重新启动调试'); await this.cleanup(); await this.prepare(this.launchArgs); await this.boot(); this.response(request); return;
