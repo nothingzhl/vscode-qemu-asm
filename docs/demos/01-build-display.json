@@ -1,0 +1,133 @@
+{
+  "title": "构建、运行与模拟显示器",
+  "id": "01-build-display",
+  "capturedAt": "2026-10-15T15:49:58.580Z",
+  "productCommit": "1f90b0b125b92aeda989b2902ca38208e50d3ae8",
+  "extensionVersion": "0.7.0",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 32.001226769000006
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 32.083
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 13,
+    "previewSeconds": 12
+  },
+  "captions": [
+    {
+      "time": 7.204700000056618e-05,
+      "text": "构建、运行与模拟显示器"
+    },
+    {
+      "time": 0.5014496070000005,
+      "text": "检查 NASM 与 QEMU 环境"
+    },
+    {
+      "time": 6.480804312999999,
+      "text": "构建 BIOS 引导盘，输出真实 NASM 编译日志"
+    },
+    {
+      "time": 10.943458888,
+      "text": "构建并运行：右侧显示真实 QEMU VGA 画面"
+    },
+    {
+      "time": 18.526794645000003,
+      "text": "开启键盘输入，真实 BIOS 客户机回显 q"
+    },
+    {
+      "time": 25.191383893,
+      "text": "停止运行：释放 QEMU，显示器保留最后一帧"
+    }
+  ],
+  "actions": [
+    {
+      "time": 2.978069224,
+      "action": "check",
+      "args": {
+        "external": true
+      },
+      "result": {
+        "checks": [
+          {
+            "command": "nasm",
+            "output": "NASM version 2.16.03"
+          },
+          {
+            "command": "qemu-system-i386",
+            "output": "QEMU emulator version 10.0.13 (Debian 1:10.0.13+ds-0+deb13u1)"
+          }
+        ]
+      }
+    },
+    {
+      "time": 7.435609880000001,
+      "action": "build",
+      "args": {
+        "external": true
+      },
+      "result": {
+        "bytes": 512,
+        "bootSignature": "0xAA55"
+      }
+    },
+    {
+      "time": 13.177422499,
+      "action": "run",
+      "args": {
+        "external": true
+      },
+      "result": {
+        "qemuPid": 82690,
+        "frames": 2,
+        "width": 720,
+        "height": 400
+      }
+    },
+    {
+      "time": 20.1883243,
+      "action": "keyboard",
+      "args": {},
+      "result": {
+        "serialEcho": "q",
+        "frames": 33
+      }
+    },
+    {
+      "time": 26.880484991,
+      "action": "stop",
+      "args": {
+        "external": true
+      },
+      "result": {
+        "stopped": true,
+        "finalFrameRetained": true,
+        "livePollingStopped": true
+      }
+    }
+  ],
+  "initialEvidence": {
+    "vscode": "1.142.0",
+    "platform": "linux",
+    "architecture": "x64",
+    "source": "Actual VS Code workbench + public extension commands + real NASM/QEMU/BIOS guest.",
+    "verifications": [],
+    "vscodeVersion": "1.142.0",
+    "extensionVersion": "0.7.0"
+  },
+  "recordingScript": "scripts/demos/build-display.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}

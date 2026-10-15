@@ -1,0 +1,297 @@
+{
+  "title": "C 源码调试：断点、调用栈与变量",
+  "id": "03-c-source",
+  "capturedAt": "2026-10-15T16:00:01.516Z",
+  "productCommit": "04b75729c306a1e9d755bd3a58e7a9148c703356",
+  "extensionVersion": "0.7.1",
+  "vscodeVersion": "1.142.0",
+  "platform": "linux",
+  "capture": {
+    "width": 1800,
+    "height": 1200,
+    "fps": 12,
+    "method": "FFmpeg X11 grab of actual VS Code Electron window",
+    "measuredSeconds": 27.306827549999998
+  },
+  "video": {
+    "width": 1440,
+    "height": 1020,
+    "codec": "H.264",
+    "pixelFormat": "yuv420p",
+    "audio": false,
+    "durationSeconds": 27.583
+  },
+  "gif": {
+    "width": 960,
+    "fps": 5,
+    "previewStartSeconds": 10,
+    "previewSeconds": 12
+  },
+  "captions": [
+    {
+      "time": 0.000059759000000667586,
+      "text": "C 源码调试：断点、调用栈与变量"
+    },
+    {
+      "time": 0.5013542710000002,
+      "text": "C 源码行断点：保护态与分页中的 kernel_main"
+    },
+    {
+      "time": 3.502528024,
+      "text": "F11 进入函数：真实 DWARF 参数与源码位置"
+    },
+    {
+      "time": 7.547573483000001,
+      "text": "继续到嵌套断点：局部变量 delta = 5、total = 42"
+    },
+    {
+      "time": 12.627322983000003,
+      "text": "选择调用者：查看指针，展开结构体与数组"
+    },
+    {
+      "time": 17.371078948,
+      "text": "Shift+F11 返回调用者：调用栈与源码同步变化"
+    },
+    {
+      "time": 21.805198714000003,
+      "text": "F10 执行赋值：global_result 变为 42"
+    }
+  ],
+  "actions": [
+    {
+      "time": 3.9114185729999997,
+      "action": "motion",
+      "args": {
+        "kind": "stepIn",
+        "expectName": "compute"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "compute"
+        },
+        "stack": [
+          {
+            "id": 10010,
+            "level": 0,
+            "name": "compute",
+            "line": 19,
+            "column": 1,
+            "instructionPointerReference": "0xC0000062",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          },
+          {
+            "id": 10011,
+            "level": 1,
+            "name": "kernel_main",
+            "line": 33,
+            "column": 1,
+            "instructionPointerReference": "0xC00000FC",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "time": 7.87109298,
+      "action": "motion",
+      "args": {
+        "kind": "continue",
+        "expectName": "compute",
+        "expectLine": "NESTED_READY"
+      },
+      "result": {
+        "stop": {
+          "reason": "breakpoint",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "compute",
+          "hitBreakpointIds": [
+            1000000
+          ]
+        },
+        "stack": [
+          {
+            "id": 10020,
+            "level": 0,
+            "name": "compute",
+            "line": 23,
+            "column": 1,
+            "instructionPointerReference": "0xC00000A2",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          },
+          {
+            "id": 10021,
+            "level": 1,
+            "name": "kernel_main",
+            "line": 33,
+            "column": 1,
+            "instructionPointerReference": "0xC00000FC",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "time": 17.454916940000004,
+      "action": "removeNestedBreakpoint",
+      "args": {},
+      "result": true
+    },
+    {
+      "time": 17.872789373,
+      "action": "motion",
+      "args": {
+        "kind": "stepOut",
+        "expectName": "kernel_main"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "kernel_main"
+        },
+        "stack": [
+          {
+            "id": 10033,
+            "level": 0,
+            "name": "kernel_main",
+            "line": 33,
+            "column": 1,
+            "instructionPointerReference": "0xC00000FC",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "time": 21.805186836,
+      "action": "motion",
+      "args": {
+        "kind": "next",
+        "expectName": "kernel_main"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "kernel_main"
+        },
+        "stack": [
+          {
+            "id": 10042,
+            "level": 0,
+            "name": "kernel_main",
+            "line": 34,
+            "column": 1,
+            "instructionPointerReference": "0xC0000102",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "time": 22.209166943,
+      "action": "motion",
+      "args": {
+        "kind": "next",
+        "expectName": "kernel_main"
+      },
+      "result": {
+        "stop": {
+          "reason": "step",
+          "threadId": 1,
+          "allThreadsStopped": true,
+          "description": "kernel_main"
+        },
+        "stack": [
+          {
+            "id": 10043,
+            "level": 0,
+            "name": "kernel_main",
+            "line": 35,
+            "column": 1,
+            "instructionPointerReference": "0xC000010A",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "time": 22.800780083000003,
+      "action": "state",
+      "args": {},
+      "result": {
+        "stack": [
+          {
+            "id": 10043,
+            "level": 0,
+            "name": "kernel_main",
+            "line": 35,
+            "column": 1,
+            "instructionPointerReference": "0xC000010A",
+            "source": {
+              "name": "kernel.c",
+              "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+            }
+          }
+        ],
+        "result": "42",
+        "failures": []
+      }
+    }
+  ],
+  "initialEvidence": {
+    "vscodeVersion": "1.142.0",
+    "source": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c",
+    "lines": {
+      "call": 33,
+      "nested": 23,
+      "after": 34
+    },
+    "stack": [
+      {
+        "id": 10001,
+        "level": 0,
+        "name": "kernel_main",
+        "line": 33,
+        "column": 1,
+        "instructionPointerReference": "0xC00000EE",
+        "source": {
+          "name": "kernel.c",
+          "path": "/tmp/qemu-feature-demo-BWfFS1/workspace/C kernel/kernel.c"
+        }
+      }
+    ],
+    "runtime": "Real ELF32/DWARF4 + GDB + QEMU; protected32 with non-identity paging",
+    "proof": "All displayed editor lines, native variables, call stacks, memory and VGA pixels are live product UI.",
+    "extensionVersion": "0.7.1"
+  },
+  "recordingScript": "scripts/demos/c-source.cjs",
+  "provenance": "Automated real VS Code controls, owned QEMU/GDB and live guest memory. Captions are added in a separate bottom bar. No replacement UI or fabricated debugger data."
+}
