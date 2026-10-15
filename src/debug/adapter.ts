@@ -8,6 +8,7 @@ import { SourceMap, parseListing } from './listing';
 import { SourceMaps } from './maps';
 import { inspectDescriptors, inspectMemory } from './inspection';
 import { disassemble } from './disassembly';
+import { inspectPaging } from './paging';
 import { MachineBreakpoints, machineAddress, memoryDataId, watchpoint } from './machineBreakpoints';
 import { cpuMode, DebugRuntime, instructionAddress, stackAddress, stackWidth, StoppedEvent } from './runtime';
 
@@ -65,7 +66,8 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       try { await this.dispatch(request); }
       catch (error) {
         const text = error instanceof Error ? error.message : String(error);
-        this.send({ type: 'response', request_seq: request.seq, command: request.command, success: false, message: text, body: { error: { id: 1, format: text, showUser: true } } });
+        const inlineInspection = ['qemuAsm.inspectMemory', 'qemuAsm.inspectDescriptors', 'qemuAsm.inspectPaging', 'qemuAsm.disassemble'].includes(request.command);
+        this.send({ type: 'response', request_seq: request.seq, command: request.command, success: false, message: text, body: { error: { id: 1, format: text, showUser: !inlineInspection } } });
         if (['launch', 'restart', 'configurationDone'].includes(request.command)) await this.finish();
       }
     });
@@ -136,7 +138,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     await display?.connect();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     this.phase = 'configuring';
-    this.output('16/32 位引导调试已就绪。支持实模式到无分页保护模式的切换，以及寄存器、栈内存和 BP/EBP 栈帧链。\n');
+    this.output('16/32 位引导调试已就绪。支持实模式、非 PAE 保护模式分页，以及寄存器、栈内存和 BP/EBP 栈帧链。\n');
   }
 
   private sourceMap(file: string): SourceMap | undefined { return this.maps?.forSource(file) ?? (file === this.sourceKey ? this.map : undefined); }
@@ -144,6 +146,30 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const entry = this.map?.forAddress(address);
     const located = this.maps?.forAddress(address) ?? (entry && this.map ? { map: this.map, entry } : undefined);
     return located && (bits === undefined || (located.entry.bits ?? 16) === bits) ? located : undefined;
+  }
+  /** NASM listings describe their original load addresses. A remapped virtual
+   * address must not acquire unrelated source lines or instruction sizes. */
+  private async locateLive(address: number, bits: 16 | 32, registers: Record<string, number>): Promise<ReturnType<AssemblyDebugAdapter['locate']>> {
+    const located = this.locate(address, bits);
+    if (!located || !((registers.cr0 ?? 0) & 0x80000000)) return located;
+    const runtime = this.requireStopped();
+    const firstAddress = located.entry.address;
+    const lastAddress = firstAddress + located.entry.size - 1;
+    if (lastAddress > 0xffffffff) return undefined;
+    try {
+      const first = await inspectPaging(runtime, { address: firstAddress });
+      if (first.physicalAddress !== firstAddress) return undefined;
+      if ((firstAddress >>> 12) !== (lastAddress >>> 12)) {
+        const last = await inspectPaging(runtime, { address: lastAddress });
+        if (last.physicalAddress !== lastAddress) return undefined;
+      }
+    } catch (error) {
+      // Older QEMU can still debug virtual machine code without the optional
+      // physical-memory extension. Unverified source mapping stays absent.
+      if (this.runtime !== runtime || this.phase !== 'stopped') throw error;
+      return undefined;
+    }
+    return located;
   }
   private addresses(): number[] {
     return [...new Set([...this.userLines].flatMap(([file, lines]) => {
@@ -175,7 +201,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const reason = dataStop ? 'data breakpoint' : entry ? 'entry' : temporary === pc ? 'step' : event.reason;
     const hitIds = dataStop && event.dataAddress !== undefined ? this.machine.dataHits(event.dataAddress, event.dataAccess ?? 'readWrite') : event.reason === 'breakpoint' ? this.machine.instructionHit(pc) : [];
     if (dataStop && event.dataAddress !== undefined) this.lastDataHit = { address: event.dataAddress, access: event.dataAccess ?? 'readWrite', ids: hitIds, pc };
-    const source = this.locate(pc, bits);
+    const source = await this.locateLive(pc, bits, registers);
     const location = `${mode} ${hex(registers.cs)}:${hex(mode === 'real16' ? registers.eip & 0xffff : registers.eip, mode === 'real16' ? 4 : 8)} → ${hex(pc)}`;
     this.output(`[暂停 ${reason}] ${location}${source ? ` ${path.basename(source.map.sourcePath)} 第 ${source.entry.line} 行：${source.entry.text.trim()}` : '（当前地址无匹配代码模式的源码）'}\n`);
     this.event('stopped', { reason, threadId: 1, allThreadsStopped: true, description: dataStop && event.dataAddress !== undefined ? `数据断点 ${hex(event.dataAddress)}（${event.dataAccess ?? 'readWrite'}）；访问已完成，${location}` : location, ...(hitIds.length ? { hitBreakpointIds: hitIds } : {}) });
@@ -195,11 +221,11 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const { pointerBytes, lower, upper } = stackRange(registers);
     const maxSlot = upper - word * 2 + 1;
     const frames: Frame[] = [];
-    const add = (address: number, name: string) => {
-      const located = this.locate(address, bits);
+    const add = async (address: number, name: string) => {
+      const located = await this.locateLive(address, bits, registers);
       frames.push({ id: frames.length + 1, name: `${name} ${hex(address)}`, line: located?.entry.line ?? 1, column: 1, instructionPointerReference: hex(address), ...(located ? { source: { name: path.basename(located.map.sourcePath), path: located.map.sourcePath } } : {}) });
     };
-    add(instructionAddress(registers), '当前指令');
+    await add(instructionAddress(registers), '当前指令');
     let bp = pointerBytes === 4 ? registers.ebp >>> 0 : registers.ebp & 0xffff;
     const sp = pointerBytes === 4 ? registers.esp >>> 0 : registers.esp & 0xffff;
     for (let count = 0; count < 15 && sp >= lower && bp >= sp && bp >= lower && bp > 0 && bp <= maxSlot; count++) {
@@ -209,13 +235,14 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       const previous = word === 4 ? words.readUInt32LE(0) : words.readUInt16LE(0);
       const returnOffset = word === 4 ? words.readUInt32LE(word) : words.readUInt16LE(word);
       const returnAddress = ((registers.cs_base ?? (registers.cs & 0xffff) * 16) + returnOffset) >>> 0;
-      const located = this.locate(returnAddress, bits);
+      const located = await this.locateLive(returnAddress, bits, registers);
       if (!located || located.entry.address !== returnAddress || (previous !== 0 && (previous <= bp || previous < lower || previous > maxSlot))) break;
       const call = located.map.entries.find(entry => entry.address + entry.size === returnAddress && (entry.bits ?? 16) === bits);
       if (!call) break;
+      if (!await this.locateLive(call.address, bits, registers)) break;
       const opcode = await runtime.readMemory(call.address, Math.min(call.size, 2));
       if (opcode[0] !== 0xe8 && !(opcode[0] === 0xff && ((opcode[1] >> 3) & 7) === 2)) break;
-      add(returnAddress, bits === 32 ? '调用者（EBP 链）' : '调用者（BP 链）');
+      await add(returnAddress, bits === 32 ? '调用者（EBP 链）' : '调用者（BP 链）');
       if (previous === 0) break;
       bp = previous;
     }
@@ -240,7 +267,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       return variables;
     }
     if (reference === 3) return [{ name: '说明', value: '调用者来自 BP/EBP 栈帧链，未保存历史寄存器快照；寄存器和栈内存属于当前暂停的 CPU。', variablesReference: 0 }];
-    if (reference === 5) return Object.entries({ MODE: cpuMode(r), '代码位数': cpuMode(r) === 'protected32' ? '32' : '16', '栈指针位数': String(stackWidth(r) * 8), '指令线性地址': hex(instructionAddress(r)), '栈线性地址': hex(stackAddress(r)), 'CR0.PE': String((r.cr0 ?? 0) & 1), 'CR0.PG': String((r.cr0 ?? 0) >>> 31) }).map(([name, value]) => ({ name, value, variablesReference: 0, presentationHint: { attributes: ['readOnly'] } }));
+    if (reference === 5) return Object.entries({ MODE: cpuMode(r), '代码位数': cpuMode(r) === 'protected32' ? '32' : '16', '栈指针位数': String(stackWidth(r) * 8), '指令线性地址': hex(instructionAddress(r)), '栈线性地址': hex(stackAddress(r)), 'CR0.PE': String((r.cr0 ?? 0) & 1), 'CR0.PG': String((r.cr0 ?? 0) >>> 31), 'CR0.WP': String(((r.cr0 ?? 0) >>> 16) & 1), ...(r.cr3 === undefined ? {} : { CR3: hex(r.cr3, 8) }), ...(r.cr4 === undefined ? {} : { 'CR4.PAE': String((r.cr4 >>> 5) & 1), 'CR4.PSE': String((r.cr4 >>> 4) & 1) }) }).map(([name, value]) => ({ name, value, variablesReference: 0, presentationHint: { attributes: ['readOnly'] } }));
     return [];
   }
 
@@ -300,7 +327,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       case 'stepIn': await this.continue(true); this.response(request); return;
       case 'next': {
         const runtime = this.requireStopped(); const registers = await runtime.registers(); const address = instructionAddress(registers);
-        const mapped = this.locate(address, cpuMode(registers) === 'protected32' ? 32 : 16)?.entry;
+        const mapped = (await this.locateLive(address, cpuMode(registers) === 'protected32' ? 32 : 16, registers))?.entry;
         const decoded = mapped ? undefined : (await disassemble(runtime, { address, count: 1 })).instructions[0];
         const entry = mapped ?? (decoded && decoded.presentationHint !== 'invalid' && decoded.size > 0 ? { address, size: decoded.size } : undefined);
         const bytes = await runtime.readMemory(address, entry?.size ?? 1);
@@ -355,6 +382,8 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         this.response(request, await inspectMemory(this.requireStopped(), args)); return;
       case 'qemuAsm.inspectDescriptors':
         this.response(request, await inspectDescriptors(this.requireStopped(), args)); return;
+      case 'qemuAsm.inspectPaging':
+        this.response(request, await inspectPaging(this.requireStopped(), args)); return;
       case 'readMemory': {
         const address = this.address(String(args.memoryReference ?? '')) + integer(args.offset, 0); const count = integer(args.count, 0);
         if (count < 0 || count > 4096) throw new Error('每次最多读取 4096 字节');

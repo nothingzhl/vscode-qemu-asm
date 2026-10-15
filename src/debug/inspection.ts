@@ -1,15 +1,18 @@
 import { CpuMode, cpuMode, instructionAddress, stackAddress } from './runtime';
+import { walkPaging } from './paging';
 
 /** Only paused, read-only runtime operations are exposed to the inspector. */
 export interface InspectionRuntime {
   registers(): Promise<Record<string, number>>;
   readMemory(address: number, count: number): Promise<Buffer>;
+  readPhysicalMemory?(address: number, count: number): Promise<Buffer>;
 }
 
 export interface MemoryInspectionArgs {
   address?: number | string;
   count?: number;
   follow?: 'address' | 'esp' | 'ebp';
+  space?: 'virtual' | 'physical';
 }
 
 export interface MemorySnapshot {
@@ -18,6 +21,14 @@ export interface MemorySnapshot {
   bytes: number[];
   mode: CpuMode;
   follow: 'address' | 'esp' | 'ebp';
+  space: 'virtual' | 'physical';
+  pagingEnabled: boolean;
+  cr3?: number;
+  cr4?: number;
+  /** Separates histories by address space and paging context. */
+  addressContext: string;
+  /** Current 4 KiB backing pages; diff histories also key each byte by its page. */
+  pageMappings: { virtualPage: number; physicalPage: number }[];
   registers: { esp: number; ebp: number; ss: number; ss_base?: number };
 }
 
@@ -93,15 +104,33 @@ export async function inspectMemory(runtime: InspectionRuntime, args: unknown = 
   const request = args as MemoryInspectionArgs;
   const follow = request.follow === undefined ? 'address' : request.follow;
   if (!['address', 'esp', 'ebp'].includes(follow)) throw new Error('内存跟随方式必须是 address、esp 或 ebp');
+  const space = request.space === undefined ? 'virtual' : request.space;
+  if (space !== 'virtual' && space !== 'physical') throw new Error('内存地址空间必须是 virtual 或 physical');
+  if (space === 'physical' && follow !== 'address') throw new Error('物理内存模式仅接受显式物理地址；请切换地址模式，不能直接把 ESP/EBP 线性地址当作物理地址');
   const count = boundedInteger(request.count === undefined ? 256 : request.count, 1, 4096, '内存读取长度');
   // Validate even an unused address so malformed messages cannot change meaning silently.
   const requested = request.address === undefined ? undefined : inspectionAddress(request.address);
+  if (space === 'physical' && requested === undefined) throw new Error('物理内存模式需要显式物理地址');
   const registers = await runtime.registers();
   const mode = cpuMode(registers);
   const address = follow === 'esp' ? stackAddress(registers) : follow === 'ebp' ? stackAddress(registers, registers.ebp) : requested ?? instructionAddress(registers);
   memoryRange(address, count);
-  const bytes = await readExact(runtime, address, count);
-  return { address, count, bytes: [...bytes], mode, follow,
+  const bytes = await readExact(runtime, address, count, space);
+  const pagingEnabled = !!((registers.cr0 ?? 0) & 0x80000000);
+  let addressContext = space === 'physical' ? 'physical' : 'virtual:unpaged';
+  const pageMappings: MemorySnapshot['pageMappings'] = [];
+  if (space === 'virtual' && pagingEnabled) {
+    // Including each touched 4 KiB backing page avoids calling a page remap a
+    // byte change when guest code rewrites a PTE without changing CR3.
+    const physicalRuntime = { readPhysicalMemory: (location: number, length: number) => readExact(runtime, location, length, 'physical') };
+    for (let page = Math.floor(address / 4096) * 4096; page < address + count; page += 4096) {
+      const mapping = await walkPaging(physicalRuntime, registers, page);
+      if (mapping.physicalAddress === undefined) throw new Error(`无法确定虚拟内存的物理映射：${mapping.explanation}`);
+      pageMappings.push({ virtualPage: page, physicalPage: mapping.physicalAddress });
+    }
+    addressContext = `virtual:legacy32:${registers.cr3}:${registers.cr4}`;
+  }
+  return { address, count, bytes: [...bytes], mode, follow, space, pagingEnabled, cr3: registers.cr3, cr4: registers.cr4, addressContext, pageMappings,
     registers: { esp: registers.esp, ebp: registers.ebp, ss: registers.ss, ss_base: registers.ss_base } };
 }
 
@@ -270,10 +299,12 @@ function boundedInteger(value: number, min: number, max: number, label: string):
   return value;
 }
 function memoryRange(address: number, count: number): void { unsigned32(address, '内存地址'); if (address + count > 0x100000000) throw new Error('内存读取不能超出 32 位地址范围'); }
-async function readExact(runtime: InspectionRuntime, address: number, count: number): Promise<Buffer> {
+async function readExact(runtime: InspectionRuntime, address: number, count: number, space: 'virtual' | 'physical' = 'virtual'): Promise<Buffer> {
   memoryRange(address, count);
   if (count > 4096) throw new Error('单次检查最多读取 4096 字节');
-  const bytes = await runtime.readMemory(address, count);
+  const read = space === 'physical' ? runtime.readPhysicalMemory : runtime.readMemory;
+  if (typeof read !== 'function') throw new Error('当前调试运行时不支持物理内存读取');
+  const bytes = await read.call(runtime, address, count);
   if (!Buffer.isBuffer(bytes) || bytes.length !== count) throw new Error('运行时返回的检查数据不完整');
   return bytes;
 }

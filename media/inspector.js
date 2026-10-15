@@ -2,7 +2,7 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
-  const tabs = ['memory', 'disassembly', 'watchpoints', 'gdt', 'idt'];
+  const tabs = ['memory', 'disassembly', 'watchpoints', 'paging', 'gdt', 'idt'];
   let state;
   const hex = (number, width = 8) => typeof number === 'number' ? `0x${number.toString(16).toUpperCase().padStart(width, '0')}` : '—';
   const element = (tag, text, className) => {
@@ -22,6 +22,7 @@
 
   function renderMemory(data) {
     const body = $('memory-body'); body.replaceChildren();
+    $('memory-context').textContent = data ? `${data.space === 'physical' ? '物理地址' : data.pagingEnabled ? '虚拟地址 · CR3 ' + hex(data.cr3) : '虚拟地址 · 分页未开启'}` : '';
     $('memory-range').textContent = data ? `${hex(data.address)} — ${hex(data.address + Math.max(0, data.bytes.length - 1))}` : '';
     if (!data) return;
     for (let offset = 0; offset < data.bytes.length; offset += 16) {
@@ -85,6 +86,49 @@
       body.appendChild(row);
     }
   }
+  function renderPaging(data) {
+    const path = $('paging-path'); path.replaceChildren();
+    const body = $('paging-body'); body.replaceChildren();
+    $('paging-meta').textContent = data ? `CR0 ${hex(data.cr0)} · CR4 ${hex(data.cr4)} · WP=${Number(data.wp)} · PSE=${Number(data.pse)}` : '';
+    $('paging-result').textContent = ''; $('paging-result').className = 'paging-result';
+    $('paging-permissions').replaceChildren(); $('paging-explanation').textContent = data?.explanation ?? '';
+    $('paging-warnings').textContent = data?.warnings.join('\n') ?? ''; $('paging-warnings').hidden = !data?.warnings.length;
+    if (!data) return;
+    const stage = (title, detail, className) => {
+      if (path.childNodes.length) path.appendChild(element('span', '→', 'paging-arrow'));
+      const node = element('div', undefined, `paging-stage${className ? ' ' + className : ''}`);
+      node.appendChild(element('span', title, 'paging-stage-title')); node.appendChild(element('strong', detail)); path.appendChild(node);
+    };
+    stage('虚拟线性地址', hex(data.address));
+    if (data.pagingEnabled) {
+      stage('CR3 · 页目录物理基址', hex(data.directoryBase ?? data.cr3));
+      stage(`PDE[${data.directoryIndex}]`, data.pde ? hex(data.pde.raw) : '未读取', data.faultLevel === 'directory' ? 'paging-fault' : '');
+      if (data.pte || (data.pde?.present && !data.pde.pageSize && data.status !== 'unsupported')) stage(`PTE[${data.tableIndex}]`, data.pte ? hex(data.pte.raw) : '未读取', data.faultLevel === 'table' ? 'paging-fault' : '');
+    }
+    if (data.physicalAddress !== undefined) stage('物理地址', hex(data.physicalAddress), 'paging-resolved');
+    else stage('转换未完成', ({ 'not-present': '页面不存在', invalid: '表项无效', unsupported: '当前模式不支持' }[data.status] ?? '不可用'), 'paging-fault');
+    const status = ({ identity: '分页未开启 · 线性地址直接对应物理地址', mapped: `映射成功 · ${data.pageSize === 4194304 ? '4 MiB 大页' : '4 KiB 页'} · 页内偏移 ${hex(data.offset, data.pageSize === 4194304 ? 6 : 3)}`, 'not-present': `${data.faultLevel === 'directory' ? '页目录项' : '页表项'} P=0 · 无物理映射`, invalid: '表项含无效或保留位', unsupported: '当前分页模式不受支持' }[data.status] ?? '');
+    $('paging-result').textContent = status;
+    $('paging-result').classList.toggle('paging-fault', !['identity', 'mapped'].includes(data.status));
+    for (const entry of [data.pde, data.pte].filter(Boolean)) {
+      const row = element('tr'); row.dataset.level = entry.level;
+      if (!entry.present || entry.reservedBits) row.className = 'row-warning';
+      cell(row, `${entry.level === 'directory' ? 'PDE' : 'PTE'}[${entry.index}]`); cell(row, hex(entry.address)); cell(row, hex(entry.raw)); cell(row, hex(entry.base));
+      cell(row, Number(entry.present)); cell(row, entry.writable ? '1 · 可写' : '0 · 只读'); cell(row, entry.user ? '1 · 用户' : '0 · 管理');
+      const flags = [];
+      if (entry.writeThrough) flags.push('PWT'); if (entry.cacheDisable) flags.push('PCD'); if (entry.accessed) flags.push('A');
+      if (entry.dirty) flags.push('D'); if (entry.pageSize) flags.push(data.pse ? 'PS · 4 MiB' : 'PS · 已忽略'); if (entry.global) flags.push('G'); if (entry.pat) flags.push('PAT');
+      if (entry.reservedBits) flags.push(`保留位 ${hex(entry.reservedBits)}`);
+      cell(row, flags.join(' · ') || '—'); body.appendChild(row);
+    }
+    if (data.effective) {
+      const p = data.effective;
+      $('paging-permissions').appendChild(element('strong', '页级访问权限'));
+      for (const [title, allowed] of [['管理态读取', p.supervisorRead], ['管理态写入', p.supervisorWrite], ['用户态读取', p.userRead], ['用户态写入', p.userWrite]]) {
+        $('paging-permissions').appendChild(element('span', `${title} ${allowed ? '允许' : '禁止'}`, `permission ${allowed ? 'allowed' : 'denied'}`));
+      }
+    }
+  }
   const accessName = access => ({ write: '写入', read: '读取', readWrite: '读取或写入' }[access] ?? access);
   const originName = origin => ({ native: 'VS Code', custom: '面板', both: 'VS Code + 面板' }[origin] ?? '—');
   function renderDisassembly(snapshot, canMutate) {
@@ -131,6 +175,7 @@
   }
   function render(snapshot) {
     const previousAddress = state?.form.address;
+    const previousPagingAddress = state?.form.pagingAddress;
     state = snapshot;
     notify('');
     const { form } = snapshot; const memory = form.tab === 'memory'; const descriptor = form.tab === 'gdt' || form.tab === 'idt';
@@ -138,16 +183,19 @@
       const selected = tab === form.tab;
       $(`tab-${tab}`).setAttribute('aria-selected', String(selected)); $(`tab-${tab}`).tabIndex = selected ? 0 : -1;
     }
-    $('memory-view').hidden = !memory; $('descriptor-view').hidden = !descriptor; $('disassembly-view').hidden = form.tab !== 'disassembly'; $('watchpoint-view').hidden = form.tab !== 'watchpoints';
+    $('memory-view').hidden = !memory; $('descriptor-view').hidden = !descriptor; $('disassembly-view').hidden = form.tab !== 'disassembly'; $('watchpoint-view').hidden = form.tab !== 'watchpoints'; $('paging-view').hidden = form.tab !== 'paging';
     if (document.activeElement !== $('address') || previousAddress !== form.address) $('address').value = hex(form.address);
-    $('follow').value = form.follow;
+    $('follow').value = form.follow; $('memory-space').value = form.memorySpace;
+    $('memory-address-label').textContent = form.memorySpace === 'physical' ? '物理地址' : '虚拟线性地址';
     const canRead = snapshot.status === 'stopped'; const canMutate = canRead && !snapshot.busy && !snapshot.stale;
     $('status').textContent = snapshot.message; $('status-dot').className = `dot ${snapshot.status}`;
     document.body.classList.toggle('stale', snapshot.stale);
     const data = snapshot[form.tab];
     $('stale').hidden = !snapshot.stale || !data;
     $('refresh').disabled = !canRead || snapshot.busy;
-    $('address').disabled = !canRead; $('go').disabled = !canRead || snapshot.busy; $('follow').disabled = !canRead;
+    $('address').disabled = !canRead; $('go').disabled = !canRead || snapshot.busy; $('follow').disabled = !canRead || form.memorySpace === 'physical'; $('memory-space').disabled = !canRead;
+    if (document.activeElement !== $('paging-address') || previousPagingAddress !== form.pagingAddress) $('paging-address').value = hex(form.pagingAddress);
+    $('paging-address').disabled = !canRead; $('paging-go').disabled = !canRead || snapshot.busy;
     const memoryAddress = snapshot.memory?.address ?? form.address;
     $('memory-prev').disabled = !canRead || snapshot.busy || memoryAddress === 0;
     $('memory-next').disabled = !canRead || snapshot.busy || memoryAddress >= 0xffffff00;
@@ -162,6 +210,7 @@
     for (const id of ['watchpoint-address', 'watchpoint-size', 'watchpoint-access', 'watchpoint-add']) $(id).disabled = !canMutate;
     $('watchpoint-clear').disabled = !canMutate || !snapshot.watchpoints?.breakpoints.some(item => item.origin !== 'native');
     if (memory) renderMemory(snapshot.memory);
+    else if (form.tab === 'paging') renderPaging(snapshot.paging);
     else if (descriptor) renderDescriptors(table, form.tab);
     else if (form.tab === 'disassembly') renderDisassembly(snapshot, canMutate);
     else renderWatchpoints(snapshot, canMutate);
@@ -180,6 +229,8 @@
     });
   });
   $('address-form').addEventListener('submit', event => { event.preventDefault(); post('address', { address: $('address').value }); });
+  $('memory-space').addEventListener('change', () => configure({ memorySpace: $('memory-space').value }));
+  $('paging-form').addEventListener('submit', event => { event.preventDefault(); post('pagingAddress', { address: $('paging-address').value }); });
   $('follow').addEventListener('change', () => configure({ follow: $('follow').value }));
   $('refresh').addEventListener('click', () => post('refresh'));
   $('disassembly-form').addEventListener('submit', event => { event.preventDefault(); post('disassemblyAddress', { address: $('disassembly-address').value }); });

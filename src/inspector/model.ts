@@ -1,9 +1,10 @@
 /** Guest snapshots and breakpoint changes only operate at confirmed stops; memory is never persisted. */
-export type InspectorTab = 'memory' | 'gdt' | 'idt' | 'disassembly' | 'watchpoints';
+export type InspectorTab = 'memory' | 'gdt' | 'idt' | 'disassembly' | 'watchpoints' | 'paging';
 export type MemoryFollow = 'address' | 'esp' | 'ebp';
 export interface InspectorSession { readonly id: string; customRequest(command: string, args: unknown): Thenable<unknown>; }
-export interface InspectorForm { tab: InspectorTab; address: number; follow: MemoryFollow; gdtStart: number; idtStart: number; disassemblyAddress: number; disassemblyFollow: boolean; }
-export interface MemoryData { address: number; count: number; bytes: number[]; mode: string; follow: MemoryFollow; changed: boolean[]; }
+export type MemorySpace = 'virtual' | 'physical';
+export interface InspectorForm { tab: InspectorTab; address: number; follow: MemoryFollow; memorySpace: MemorySpace; pagingAddress: number; gdtStart: number; idtStart: number; disassemblyAddress: number; disassemblyFollow: boolean; }
+export interface MemoryData { address: number; count: number; bytes: number[]; mode: string; follow: MemoryFollow; space: MemorySpace; addressContext: string; pagingEnabled: boolean; cr3?: number; cr4?: number; pageMappings: { virtualPage: number; physicalPage: number }[]; changed: boolean[]; }
 export interface DescriptorEntry {
   index: number; address: number; raw: string; kind: string; type: string; present: boolean; dpl: number; valid: boolean;
   warnings: string[]; selector?: number; targetSelector?: number; parameterCount?: number; base?: number; effectiveLimit?: number; granularity?: boolean;
@@ -18,9 +19,22 @@ export interface InstructionBreakpoint { address: number; verified: boolean; id?
 export type WatchAccess = 'write' | 'read' | 'readWrite';
 export interface Watchpoint { id: number; dataId: string; address: number; size: 1 | 2 | 4; access: WatchAccess; verified: boolean; message?: string; origin: BreakpointOrigin; }
 export interface WatchpointData { breakpoints: Watchpoint[]; lastHit?: { address: number; access: WatchAccess; ids: number[]; pc: number }; }
+export interface PageEntry {
+  level: 'directory' | 'table'; index: number; address: number; raw: number; present: boolean; writable: boolean; user: boolean;
+  writeThrough: boolean; cacheDisable: boolean; accessed: boolean; dirty?: boolean; pageSize?: boolean; global?: boolean; pat?: boolean;
+  base?: number; reservedBits?: number;
+}
+export interface PagingData {
+  address: number; mode: string; pagingEnabled: boolean; format: 'disabled' | 'legacy32'; cr0: number; cr3?: number; cr4?: number;
+  wp: boolean; pse: boolean; directoryBase?: number; directoryIndex: number; tableIndex: number; offset: number;
+  status: 'identity' | 'mapped' | 'not-present' | 'invalid' | 'unsupported'; physicalAddress?: number; pageSize?: 4096 | 4194304;
+  faultLevel?: 'directory' | 'table'; pde?: PageEntry; pte?: PageEntry;
+  effective?: { user: boolean; writable: boolean; supervisorRead: boolean; supervisorWrite: boolean; userRead: boolean; userWrite: boolean };
+  warnings: string[]; explanation: string;
+}
 export interface InspectorSnapshot {
   generation: number; sessionId?: string; form: InspectorForm; status: 'idle' | 'running' | 'stopped'; busy: boolean; stale: boolean; message: string;
-  memory?: MemoryData; gdt?: DescriptorData; idt?: DescriptorData; disassembly?: DisassemblyData; instructionBreakpoints?: InstructionBreakpoint[]; watchpoints?: WatchpointData;
+  memory?: MemoryData; gdt?: DescriptorData; idt?: DescriptorData; disassembly?: DisassemblyData; instructionBreakpoints?: InstructionBreakpoint[]; watchpoints?: WatchpointData; paging?: PagingData;
 }
 const motion = new Set(['continue', 'next', 'stepIn', 'stepOut', 'reverseContinue', 'stepBack']);
 export function parseAddress(value: unknown): number | undefined {
@@ -30,10 +44,11 @@ export function parseAddress(value: unknown): number | undefined {
 }
 function validForm(value: Partial<InspectorForm>): Partial<InspectorForm> {
   const result: Partial<InspectorForm> = {};
-  if (['memory', 'gdt', 'idt', 'disassembly', 'watchpoints'].includes(value.tab!)) result.tab = value.tab;
+  if (['memory', 'gdt', 'idt', 'disassembly', 'watchpoints', 'paging'].includes(value.tab!)) result.tab = value.tab;
+  if (value.memorySpace === 'virtual' || value.memorySpace === 'physical') result.memorySpace = value.memorySpace;
   if (value.follow === 'address' || value.follow === 'esp' || value.follow === 'ebp') result.follow = value.follow;
-  for (const key of ['address', 'disassemblyAddress', 'gdtStart', 'idtStart'] as const) {
-    const max = key === 'address' || key === 'disassemblyAddress' ? 0xffffffff : 8191;
+  for (const key of ['address', 'disassemblyAddress', 'pagingAddress', 'gdtStart', 'idtStart'] as const) {
+    const max = key === 'address' || key === 'disassemblyAddress' || key === 'pagingAddress' ? 0xffffffff : 8191;
     if (Number.isInteger(value[key]) && value[key]! >= 0 && value[key]! <= max) result[key] = value[key];
   }
   if (typeof value.disassemblyFollow === 'boolean') result.disassemblyFollow = value.disassemblyFollow;
@@ -44,7 +59,10 @@ function memoryData(value: unknown): value is Omit<MemoryData, 'changed'> {
   return object(value) && Number.isInteger(value.address) && (value.address as number) >= 0 && (value.address as number) <= 0xffffffff
     && Array.isArray(value.bytes) && value.bytes.length <= 256 && value.bytes.every(byte => Number.isInteger(byte) && byte >= 0 && byte <= 255)
     && value.count === value.bytes.length && (value.address as number) + value.bytes.length <= 0x100000000
-    && typeof value.mode === 'string' && ['address', 'esp', 'ebp'].includes(value.follow as string);
+    && typeof value.mode === 'string' && ['address', 'esp', 'ebp'].includes(value.follow as string)
+    && (value.space === 'virtual' || value.space === 'physical') && typeof value.addressContext === 'string' && value.addressContext.length <= 128
+    && Array.isArray(value.pageMappings) && value.pageMappings.length <= 2 && value.pageMappings.every(mapping => object(mapping) && uint32(mapping.virtualPage) && uint32(mapping.physicalPage) && mapping.virtualPage % 4096 === 0 && mapping.physicalPage % 4096 === 0)
+    && typeof value.pagingEnabled === 'boolean' && (value.cr3 === undefined || uint32(value.cr3)) && (value.cr4 === undefined || uint32(value.cr4));
 }
 function descriptorData(value: unknown, table: 'gdt' | 'idt'): value is DescriptorData {
   return object(value) && value.table === table && typeof value.format === 'string' && typeof value.mode === 'string'
@@ -55,6 +73,26 @@ function descriptorData(value: unknown, table: 'gdt' | 'idt'): value is Descript
 }
 
 function uint32(value: unknown): value is number { return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 0xffffffff; }
+function pageEntry(value: unknown): value is PageEntry {
+  return object(value) && ['directory', 'table'].includes(value.level as string) && Number.isInteger(value.index)
+    && (value.index as number) >= 0 && (value.index as number) <= 1023 && uint32(value.address) && uint32(value.raw)
+    && ['present', 'writable', 'user', 'writeThrough', 'cacheDisable', 'accessed'].every(key => typeof value[key] === 'boolean')
+    && ['dirty', 'pageSize', 'global', 'pat'].every(key => value[key] === undefined || typeof value[key] === 'boolean')
+    && (value.base === undefined || uint32(value.base)) && (value.reservedBits === undefined || uint32(value.reservedBits));
+}
+function pagingData(value: unknown): value is PagingData {
+  return object(value) && uint32(value.address) && typeof value.mode === 'string' && typeof value.pagingEnabled === 'boolean'
+    && ['disabled', 'legacy32'].includes(value.format as string) && uint32(value.cr0) && typeof value.wp === 'boolean' && typeof value.pse === 'boolean'
+    && ['cr3', 'cr4', 'directoryBase', 'physicalAddress'].every(key => value[key] === undefined || uint32(value[key]))
+    && ['directoryIndex', 'tableIndex', 'offset'].every(key => Number.isInteger(value[key]) && (value[key] as number) >= 0 && (value[key] as number) <= 0x3fffff)
+    && ['identity', 'mapped', 'not-present', 'invalid', 'unsupported'].includes(value.status as string)
+    && (value.pageSize === undefined || value.pageSize === 4096 || value.pageSize === 4194304)
+    && (value.faultLevel === undefined || value.faultLevel === 'directory' || value.faultLevel === 'table')
+    && (value.pde === undefined || pageEntry(value.pde)) && (value.pte === undefined || pageEntry(value.pte))
+    && (value.effective === undefined || (object(value.effective) && ['user', 'writable', 'supervisorRead', 'supervisorWrite', 'userRead', 'userWrite'].every(key => typeof (value.effective as Record<string, unknown>)[key] === 'boolean')))
+    && Array.isArray(value.warnings) && value.warnings.length <= 32 && value.warnings.every(warning => typeof warning === 'string') && typeof value.explanation === 'string'
+    && (['mapped', 'identity'].includes(value.status as string) ? uint32(value.physicalAddress) : value.physicalAddress === undefined);
+}
 function disassemblyData(value: unknown): value is DisassemblyData {
   return object(value) && uint32(value.address) && uint32(value.pc) && typeof value.mode === 'string' && (value.bits === 16 || value.bits === 32)
     && Number.isSafeInteger(value.nextAddress) && (value.nextAddress as number) >= 0 && (value.nextAddress as number) <= 0x100000000
@@ -84,9 +122,9 @@ export class InspectorModel {
   private mutating = false;
   private pending = false;
   private disposed = false;
-  private seen = new Map<number, number>();
+  private seen = new Map<string, number>();
   private state: InspectorSnapshot = {
-    generation: 0, form: { tab: 'memory', address: 0x7c00, follow: 'address', gdtStart: 0, idtStart: 0, disassemblyAddress: 0x7c00, disassemblyFollow: true },
+    generation: 0, form: { tab: 'memory', address: 0x7c00, follow: 'address', memorySpace: 'virtual', pagingAddress: 0x7c00, gdtStart: 0, idtStart: 0, disassemblyAddress: 0x7c00, disassemblyFollow: true },
     status: 'idle', busy: false, stale: false, message: '启动 QEMU 汇编调试并暂停后，在这里观察指令、内存和断点。',
   };
   constructor(private readonly render: (state: InspectorSnapshot) => void) {}
@@ -107,6 +145,7 @@ export class InspectorModel {
   configure(value: Partial<InspectorForm>): void {
     if (this.disposed) return;
     const form = { ...this.state.form, ...validForm(value) };
+    if (form.memorySpace === 'physical') form.follow = 'address';
     if (JSON.stringify(form) === JSON.stringify(this.state.form)) { this.emit(); return; }
     this.generation += 1;
     this.state = { ...this.state, form, stale: true, busy: false };
@@ -114,7 +153,7 @@ export class InspectorModel {
   }
   request(command: string): void {
     if (command === 'restart' || command === 'launch') {
-      this.seen.clear(); this.state = { ...this.state, memory: undefined, gdt: undefined, idt: undefined, disassembly: undefined, watchpoints: undefined, instructionBreakpoints: undefined };
+      this.seen.clear(); this.state = { ...this.state, memory: undefined, gdt: undefined, idt: undefined, disassembly: undefined, watchpoints: undefined, instructionBreakpoints: undefined, paging: undefined };
       this.running();
     } else if (motion.has(command) || command === 'disconnect' || command === 'terminate') this.running();
   }
@@ -145,7 +184,8 @@ export class InspectorModel {
     try {
       let value: unknown;
       let instructionState: unknown;
-      if (form.tab === 'memory') value = await session.customRequest('qemuAsm.inspectMemory', { address: form.address, count: form.follow === 'address' ? Math.min(256, 0x100000000 - form.address) : 256, follow: form.follow });
+      if (form.tab === 'memory') value = await session.customRequest('qemuAsm.inspectMemory', { address: form.address, count: form.follow === 'address' ? Math.min(256, 0x100000000 - form.address) : 256, follow: form.follow, space: form.memorySpace });
+      else if (form.tab === 'paging') value = await session.customRequest('qemuAsm.inspectPaging', { address: form.pagingAddress });
       else if (form.tab === 'gdt' || form.tab === 'idt') value = await session.customRequest('qemuAsm.inspectDescriptors', { table: form.tab, start: form.tab === 'gdt' ? form.gdtStart : form.idtStart, count: 64 });
       else if (form.tab === 'disassembly') [value, instructionState] = await Promise.all([
         session.customRequest('qemuAsm.disassemble', { ...(form.disassemblyFollow ? {} : { address: form.disassemblyAddress }), count: 64 }),
@@ -155,10 +195,21 @@ export class InspectorModel {
       if (!this.current(session, generation)) return;
       if (form.tab === 'memory') {
         if (!memoryData(value)) throw new Error('调试器返回了无效的内存快照');
-        const changed = value.bytes.map((byte, index) => this.seen.has(value.address + index) && this.seen.get(value.address + index) !== byte);
-        for (let index = 0; index < value.bytes.length; index += 1) this.seen.set(value.address + index, value.bytes[index]);
+        if (value.space !== form.memorySpace || (value.space === 'physical' && value.follow !== 'address')) throw new Error('调试器返回的内存地址空间不匹配');
+        const mappings = value.pageMappings;
+        if (value.space === 'virtual' && value.pagingEnabled && value.bytes.some((_, offset) => !mappings.some(mapping => mapping.virtualPage === Math.floor((value.address + offset) / 4096) * 4096))) throw new Error('调试器返回的分页内存快照缺少物理映射');
+        const key = (offset: number) => {
+          const address = value.address + offset;
+          const physicalPage = value.space === 'virtual' && value.pagingEnabled ? mappings.find(mapping => mapping.virtualPage === Math.floor(address / 4096) * 4096)?.physicalPage : '';
+          return `${value.space}:${value.addressContext}:${physicalPage}:${address}`;
+        };
+        const changed = value.bytes.map((byte, index) => this.seen.has(key(index)) && this.seen.get(key(index)) !== byte);
+        for (let index = 0; index < value.bytes.length; index += 1) this.seen.set(key(index), value.bytes[index]);
         while (this.seen.size > 4096) this.seen.delete(this.seen.keys().next().value!);
-        this.state = { ...this.state, memory: { ...value, changed }, stale: false, busy: false, message: `已暂停 · ${value.mode} · ${value.bytes.length} 字节` };
+        this.state = { ...this.state, memory: { ...value, changed }, stale: false, busy: false, message: `已暂停 · ${value.mode} · ${value.space === 'physical' ? '物理' : '虚拟'}内存 · ${value.bytes.length} 字节` };
+      } else if (form.tab === 'paging') {
+        if (!pagingData(value)) throw new Error('调试器返回了无效的页表快照');
+        this.state = { ...this.state, paging: value, stale: false, busy: false, message: `已暂停 · ${value.mode} · ${value.pagingEnabled ? '32 位分页' : '分页未开启'}` };
       } else if (form.tab === 'disassembly') {
         if (!disassemblyData(value) || !instructionBreakpoints(instructionState)) throw new Error('调试器返回了无效的反汇编快照');
         this.state = { ...this.state, disassembly: value, instructionBreakpoints: instructionState.breakpoints, stale: false, busy: false, message: `已暂停 · ${value.mode} · ${value.bits} 位 · ${value.instructions.length} 条指令` };

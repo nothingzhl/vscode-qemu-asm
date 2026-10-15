@@ -215,7 +215,7 @@ dw 0xaa55
     await runtime.dispose();
     console.log('PASS: real protected16 CS.D=0 with large limit and 32-bit far jump retains EIP>64KiB for continue, step and pause');
 
-    // 建立实际 identity page table，使打开 PG 后能停在下一条指令并给出明确边界提示。
+    // 实际 legacy page table：打开 PG 后仍可读取、单步，不能退回旧版拒绝所有分页的行为。
     const pagingSetup = `cld
 mov edi,0x2000
 mov eax,3
@@ -243,10 +243,42 @@ nop
     await stopped(runtime, () => runtime.resume(), 'breakpoint');
     assert.equal(cpuMode(await runtime.registers()), 'protected32');
     await stopped(runtime, () => runtime.resume(true), 'step');
-    await assert.rejects(runtime.registers(), /分页/);
-    await assert.rejects(runtime.resume(), /分页/);
+    assert.equal(cpuMode(await runtime.registers()), 'protected32');
+    assert.deepEqual(await runtime.readMemory(0x7c00, 2), pagingImage.subarray(0, 2));
+    await stopped(runtime, () => runtime.resume(true), 'step');
     await runtime.dispose();
-    console.log('PASS: real CR0.PG transition with valid identity paging is rejected explicitly');
+    console.log('PASS: real CR0.PG transition with valid identity legacy paging preserves register reads, virtual memory reads and single stepping');
+
+    // PAE 是另一种页表格式：用有效的 2MiB PAE 映射测试明确拒绝，不能靠页故障伪造边界。
+    const paeSetup = `mov dword [0x1000],0x2001
+mov dword [0x1004],0
+mov dword [0x2000],0x83
+mov dword [0x2004],0
+mov eax,cr4
+or eax,0x30
+mov cr4,eax
+mov eax,0x1000
+mov cr3,eax
+mov eax,cr0
+or eax,0x80000000
+mov cr0,eax
+nop
+`;
+    await fs.writeFile(project.source, protectedSource.replace('mov eax,0x12345678\npush eax', `${paeSetup}mov eax,0x12345678\npush eax`));
+    await build(project, processes, text => log.push(text));
+    const paeImage = await fs.readFile(project.image);
+    const paeWrite = paeImage.indexOf(Buffer.from('0f22c0', 'hex'), peWrite + 3);
+    assert.ok(paeWrite > peWrite);
+    runtime = new DebugRuntime(project, text => log.push(text));
+    await stopped(runtime, () => runtime.launch(), 'entry');
+    await runtime.setBreakpoints([0x7c00 + paeWrite]);
+    await stopped(runtime, () => runtime.resume(), 'breakpoint');
+    assert.equal(cpuMode(await runtime.registers()), 'protected32');
+    await stopped(runtime, () => runtime.resume(true), 'step');
+    await assert.rejects(runtime.registers(), /PAE/i);
+    await assert.rejects(runtime.resume(), /PAE/i);
+    await runtime.dispose();
+    console.log('PASS: real CR0.PG with valid PAE 2MiB mappings is rejected explicitly as unsupported PAE');
 
     await fs.writeFile(project.source, 'bits 16\norg 0x7c00\ncli\nlgdt [gdt_desc]\nmov eax,cr0\nor eax,1\nmov cr0,eax\nmov ax,8\nmov ds,ax\nmov eax,cr0\nand eax,0xfffffffe\nmov cr0,eax\nnop\njmp $\ngdt: dq 0\ndw 0xffff,0\ndb 0,0x92,0xcf,0\ngdt_desc: dw $-gdt-1\ndd gdt\ntimes 510-($-$$) db 0\ndw 0xaa55\n');
     await build(project, processes, text => log.push(text));

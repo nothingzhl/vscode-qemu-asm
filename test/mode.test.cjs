@@ -44,8 +44,28 @@ test('stack address width follows SS.B independently of CS.D', () => {
   assert.equal(stackAddress({ cr0: 0, ss: 0x700, esp: 0x12345678 }), 0xc678);
 });
 
-test('CPU mode rejects paging, VM86, SMM, long mode and malformed code descriptors', () => {
-  assert.throws(() => cpuMode(protectedRegisters({ cr0: 0x80000011 })), /分页/);
+test('ordinary 32-bit paging keeps CS and SS address semantics', () => {
+  const paged = protectedRegisters({ cr0: 0x80000011, cr3: 0x12345018, cr4: 0x10 });
+  assert.equal(cpuMode(paged), 'protected32');
+  assert.equal(instructionAddress(paged), 0x10020);
+  assert.equal(stackAddress(paged), 0x1fff8);
+  assert.equal(cpuMode({ ...paged, cs_flags: 0x8f9b00 }), 'protected16');
+  assert.equal(instructionAddress({ ...paged, cs_flags: 0x8f9b00 }), 0x10020);
+  assert.equal(stackWidth({ ...paged, cs_flags: 0x8f9b00 }), 4);
+});
+
+test('CPU mode rejects unsupported or incomplete paging state', () => {
+  const paged = protectedRegisters({ cr0: 0x80000011, cr3: 0x1000, cr4: 0 });
+  assert.throws(() => cpuMode({ ...paged, cr0: 0x80000010 }), /CR0.PE/);
+  assert.throws(() => cpuMode({ ...paged, cr4: 0x20 }), /PAE/);
+  for (const name of ['cr3', 'cr4']) {
+    for (const value of [undefined, NaN, -1, 1.5, 0x100000000]) {
+      assert.throws(() => cpuMode({ ...paged, [name]: value }), new RegExp(name.toUpperCase()));
+    }
+  }
+});
+
+test('CPU mode rejects VM86, SMM, long mode and malformed code descriptors', () => {
   assert.throws(() => cpuMode(protectedRegisters({ eflags: 1 << 17 })), /8086/);
   assert.throws(() => cpuMode(protectedRegisters({ smm: 1 })), /SMM/);
   assert.throws(() => cpuMode(protectedRegisters({ efer: 1 << 10 })), /LMA/);

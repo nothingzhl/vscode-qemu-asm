@@ -86,3 +86,19 @@ body.stale .table-scroll { opacity: .65; }
 .toolbar { flex-wrap: wrap; }
 .tabs { gap: 1px; }
 .tabs button { padding: 9px 10px; }
+
+#paging-address { width: 150px; font-family: var(--vscode-editor-font-family); }
+#memory-context { font-family: var(--vscode-editor-font-family); }
+.paging-path { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; margin: 8px 0 12px; }
+.paging-stage { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 9px 12px; display: flex; gap: 5px; flex-direction: column; min-width: 155px; }
+.paging-stage-title { color: var(--vscode-descriptionForeground); font-size: 11px; }
+.paging-stage strong { font: 14px var(--vscode-editor-font-family); }
+.paging-arrow { align-self: center; color: var(--vscode-descriptionForeground); }
+.paging-resolved { border-color: var(--vscode-debugIcon-startForeground, #89d185); }
+.paging-fault { color: var(--vscode-editorWarning-foreground, #cca700); }
+.paging-stage.paging-fault { border-color: var(--vscode-editorWarning-foreground, #cca700); }
+.paging-result { margin: 4px 0 12px; font-size: 12px; }
+.paging-permissions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 14px; font-size: 12px; }
+.permission { padding: 3px 8px; background: var(--vscode-badge-background); border-radius: 3px; }
+.permission.denied { color: var(--vscode-descriptionForeground); }
+#paging-meta { color: var(--vscode-descriptionForeground); font: 11px var(--vscode-editor-font-family); }

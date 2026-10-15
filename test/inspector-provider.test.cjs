@@ -17,7 +17,7 @@ function harness() {
   const view = { visible: true, webview: { options: {}, cspSource: 'vscode-webview:', asWebviewUri: value => value, postMessage: () => Promise.resolve(true), onDidReceiveMessage: callback => { view.receive = callback; return { dispose() {} }; } }, onDidChangeVisibility: callback => { view.visibility = callback; return { dispose() {} }; }, onDidDispose: callback => { view.ended = callback; return { dispose() {} }; } };
   const session = (id = 'qemu') => ({ id, type: 'qemu-asm', customRequest: (command, args) => {
     requests.push({ id, command, args });
-    return Promise.resolve({ address: args.address, count: 1, bytes: [1], mode: 'real16', follow: args.follow });
+    return Promise.resolve({ address: args.address, count: 1, bytes: [1], mode: 'real16', follow: args.follow, space: args.space, addressContext: args.space === 'physical' ? 'physical' : 'virtual:unpaged', pagingEnabled: false, pageMappings: [] });
   } });
   const activate = session => { debug.activeDebugSession = session; listeners.onDidChangeActiveDebugSession(session); };
   const open = () => { provider.resolveWebviewView(view); view.receive({ type: 'ready' }); };
@@ -95,4 +95,14 @@ test('mutations from an older stopped snapshot cannot affect another session or 
   otherTracker.onDidSendMessage({ type: 'event', event: 'stopped' }); await turn();
   h.view.receive({ ...message, generation: h.latest().generation }); assert.equal(changes.length, 0);
   h.view.receive({ ...message, generation: h.latest().generation, sessionId: second.id }); assert.equal(changes.length, 1); h.provider.dispose();
+});
+
+test('paging input stays independent of memory and restores only validated form fields', async () => {
+  const h = harness(); h.provider.resolveWebviewView(h.view);
+  h.view.receive({ type: 'ready', form: { tab: 'paging', pagingAddress: 0xc0100000, memorySpace: 'physical', follow: 'esp', bytes: [1, 2] } });
+  assert.equal(h.provider.model.snapshot.form.tab, 'paging'); assert.equal(h.provider.model.snapshot.form.pagingAddress, 0xc0100000);
+  assert.equal(h.provider.model.snapshot.form.follow, 'address'); assert.equal(h.provider.model.snapshot.form.bytes, undefined);
+  h.view.receive({ type: 'pagingAddress', address: '0xc0100004' }); assert.equal(h.provider.model.snapshot.form.pagingAddress, 0xc0100004); assert.equal(h.provider.model.snapshot.form.address, 0x7c00);
+  h.view.receive({ type: 'pagingAddress', address: '[cr3]' }); assert.equal(h.posts.at(-1).type, 'notice'); assert.equal(h.provider.model.snapshot.form.pagingAddress, 0xc0100004);
+  assert.match(h.view.webview.html, /id="tab-paging"/); assert.match(h.view.webview.html, /id="memory-space"/); assert.match(h.view.webview.html, /表项物理地址/); h.provider.dispose();
 });
