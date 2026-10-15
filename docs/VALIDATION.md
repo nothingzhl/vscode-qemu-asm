@@ -1,0 +1,51 @@
+# 首版验证记录
+
+日期：2026-10-15。执行环境：Linux x86_64 / Debian 13。
+
+| 项目 | 结果 |
+| --- | --- |
+| Node.js | 22.23.3 |
+| `npm ci` | 通过（缓存目录设为可写临时目录） |
+| `npm run check` | 通过，TypeScript 严格模式 |
+| `npm run compile` | 通过 |
+| `npm test` | 10 项通过，0 跳过 |
+| NASM | 2.16.03；实际构建镜像 512 字节，尾部 `55 aa` |
+| QEMU | 10.0.13；TCG、无界面，串口收到 `QEMU_ASM_BOOT_OK` |
+| 停止与失败 | 集成脚本确认 QEMU 结束；真实 NASM 错误后旧产物不存在 |
+| VSIX | `@vscode/vsce package` 成功，包含编译后核心模块与入口 |
+
+系统目录不可写，因此 NASM、QEMU 及缺失库通过 Debian 软件包下载并解包到临时目录。QEMU 包装脚本用 `exec` 转交启动，并用 `-L` 指定解包后的 QEMU / SeaBIOS 固件目录；没有使用 KVM。集成测试的项目目录包含空格和逗号，QEMU 工具包装路径也包含空格。
+
+标准 Ubuntu 环境直接安装 `nasm qemu-system-x86`，然后运行 `npm run test:integration` 即可复现。完整命令与环境变量见 README；CI 已配置真实工具安装与验证，远端 CI 是否通过须以实际检查为准。
+
+首版交付时未验证：VS Code 扩展宿主 GUI 交互、实际 VSIX 安装、多工作区交互与宿主关闭流程，以及 macOS / Windows。下方追加记录更新了宿主与安装验证范围。
+
+打包工具提示仓库尚未提供 LICENSE；本次没有擅自选择或添加许可证。
+
+## 兼容性追加验证（2026-10-15）
+
+发现并修复以下问题：
+
+- 镜像路径只比较字符串，可能通过大小写别名或项目内目录链接指向源码/配置。构建现在先比较文件实际身份；Linux 目录链接回归通过，大小写不敏感卷测试将由对应平台执行。
+- 核心测试包含 POSIX 固定路径，已改为使用平台路径 API；新增 Windows 盘符/UNC/不同盘符、中文空格路径和 macOS/Linux 路径语义测试。
+- 拒绝 `C:tool.exe` 等盘符相对路径，避免依赖进程的每盘当前目录。
+- 输出流使用 UTF-8 连续解码，分块中文日志不会损坏文件路径。
+- 区分插件主动停止与异常信号终止；后者显示运行失败。
+
+| 实际执行项目 | 结果 |
+| --- | --- |
+| Node.js 22 核心与路径测试 | 共 19 项，18 通过，1 项因 Linux 文件系统大小写敏感跳过 |
+| 真实 NASM / QEMU TCG 集成 | 通过：512 字节、`55 aa`、串口标记、停止、失败后清除旧镜像 |
+| VS Code 1.96.4 / Linux x64 真实宿主 | 可信、受限、多工作区三个阶段全部通过 |
+| VS Code 1.142.0 / Linux x64 真实宿主 | 同上，三个阶段全部通过 |
+| 更新后的 VSIX 安装 | VS Code 1.96.4 CLI 在独立扩展目录安装成功，列表确认 `nothingzhl.vscode-qemu-asm@0.0.1` |
+
+真实宿主测试启动官方 VS Code Debian 包及 Xvfb，通过 VS Code API 执行已注册的插件命令，使用真实 NASM/QEMU；测试仅观察插件进程的输出与结束状态，没有替换工具或模拟 VS Code API。可信阶段验证环境检测、构建、两次运行的串口标记、重复运行停止旧实例、停止命令、真实编译失败后的源码 diagnostics 与旧镜像失效。受限阶段确认实际 `workspace.isTrusted === false`，5 个命令均未执行工具或创建文件。多工作区阶段验证两个文件夹的资源设置与相对路径基准互不串扰。
+
+宿主记录已随交付保存为 `qemu-asm-host-current.log` 和 `qemu-asm-host-min.log`。Linux 本地使用 `VSCODE_EXECUTABLE_PATH` 指向官方包，`xvfb-run -a npm run test:host` 可重复运行。标准环境默认下载所选 VS Code 版本。
+
+新增 CI：Ubuntu、macOS、Windows × VS Code 1.96.4、stable，共 6 组。每组运行核心测试、真实 NASM/QEMU 集成和真实宿主验证，并保存测试日志。**macOS/Windows 原生结果目前尚未获取；路径语义测试通过不等于这两平台已实测通过。**
+
+仍待人工验证：创建项目的目录选择对话框、多工作区命令的选择器、状态栏点击与视觉反馈、从“问题”面板点击跳转、直接关闭整个宿主时的进程清理。自动测试已覆盖源码错误位置、停止及 core dispose，但没有自动化这些人工 UI 操作。
+
+后续 0.1.0 调试功能与追加验收见 [操作系统学习调试验证](DEBUG_VALIDATION.md)。

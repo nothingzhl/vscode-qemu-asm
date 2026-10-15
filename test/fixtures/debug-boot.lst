@@ -1,0 +1,28 @@
+     1                                  bits 16
+     2                                  org 0x7c00
+     3                                  ; 用于断点、单步、寄存器和调用堆栈集成验证的实模式引导程序。
+     4 00000000 EA[0500]0000            jmp 0x0000:boot
+     5                                  boot:
+     6 00000005 FA                          cli
+     7 00000006 31C0                        xor ax, ax
+     8 00000008 8ED8                        mov ds, ax
+     9 0000000A 8ED0                        mov ss, ax
+    10 0000000C BC007C                      mov sp, 0x7c00
+    11 0000000F B83412                      mov ax, 0x1234
+    12 00000012 E80300                      call worker
+    13                                  finished:
+    14 00000015 F4                          hlt
+    15 00000016 EBFD                        jmp finished
+    16                                  worker:
+    17 00000018 55                          push bp
+    18 00000019 89E5                        mov bp, sp
+    19 0000001B 50                          push ax
+    20 0000001C BB7856                      mov bx, 0x5678
+    21 0000001F 58                          pop ax
+    22 00000020 5D                          pop bp
+    23 00000021 C3                          ret
+    24 00000022 E8B083E8AF95E4B8AD-     message db '调试中文路径', 13, 10, 0
+    24 0000002B E69687E8B7AFE5BE84-
+    24 00000034 0D0A00             
+    25 00000037 00<rep 1C7h>            times 510-($-$$) db 0
+    26 000001FE 55AA                    dw 0xaa55
