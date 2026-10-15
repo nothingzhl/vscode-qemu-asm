@@ -1,5 +1,7 @@
 # 架构重构验证
 
+> 历史阶段记录：以下结果对应文中注明的版本、提交与执行环境，不是当前全部平台的兼容承诺。使用指南见[文档导航](README.md)，当前工具组合见[兼容性](COMPATIBILITY.md)。
+
 本文保留首轮历史结果；最新代码及验收见 [第二轮重构验证](ARCHITECTURE_REFINEMENT.md)。
 
 日期：2026-10-15。分支：`refactor/capability-architecture`。代码提交：`c8f1baf`、`819e138`；后续文档提交不改变产品代码。基础为 `f12dc2d`。安装包保留 0.8.0 版本号，是分支验证构建，没有发布 Marketplace。

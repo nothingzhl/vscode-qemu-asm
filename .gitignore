@@ -4,3 +4,6 @@ dist/
 .DS_Store
 *.log
 .vscode-test/
+
+artifacts/
+coverage/

@@ -11,3 +11,7 @@ CLOUD_TASK.md
 AGENTS.md
 docs/**
 .vscode-test/**
+
+artifacts/**
+coverage/**
+.c8rc.json

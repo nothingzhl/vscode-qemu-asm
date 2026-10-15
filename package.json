@@ -43,7 +43,14 @@
     "test:c-source:ui": "npm run compile && node scripts/c-source-ui-test.cjs",
     "test:vsix:c-source": "node scripts/vsix-c-source-test.cjs",
     "test:dependencies": "npm run compile && node scripts/dependency-integration.cjs",
-    "test:vsix:dependencies": "node scripts/vsix-dependencies-test.cjs"
+    "test:vsix:dependencies": "node scripts/vsix-dependencies-test.cjs",
+    "test:coverage": "npm run compile && c8 node --test test/*.test.cjs",
+    "docs:check": "node scripts/docs/check.cjs",
+    "test:performance": "npm run compile && node --expose-gc scripts/performance/run.cjs --enforce --output artifacts/performance/modules.json",
+    "test:performance:resources": "npm run compile && node --expose-gc scripts/performance/resources.cjs --enforce --output artifacts/performance/resources.json",
+    "test:performance:display": "npm run compile && node --expose-gc scripts/performance/real-display.cjs --enforce --output artifacts/performance/real-display.json",
+    "test:compatibility": "npm run compile && node scripts/compatibility/runner.cjs --output artifacts/compatibility",
+    "test:ci": "npm run compile && node scripts/ci/run-suite.cjs --suite full --output artifacts/integration"
   },
   "contributes": {
     "commands": [
@@ -243,6 +250,7 @@
     "@types/node": "22.20.5",
     "@types/vscode": "1.96.0",
     "@vscode/test-electron": "2.5.2",
+    "c8": "12.0.0",
     "typescript": "5.9.3"
   },
   "capabilities": {

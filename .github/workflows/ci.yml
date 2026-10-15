@@ -1,18 +1,160 @@
 name: CI
+
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  workflow-lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate every GitHub Actions workflow
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
+
+  quality:
+    name: Quality (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        vscode: ['1.96.4', stable]
+        os: [ubuntu-24.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run docs:check
+      - name: Unit and contract tests with coverage
+        if: runner.os == 'Linux'
+        run: npm run test:coverage
+      - name: Native platform unit and contract tests
+        if: runner.os != 'Linux'
+        run: npm test
+      - name: Upload coverage
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: artifacts/coverage/
+          if-no-files-found: warn
+
+  integration:
+    name: Linux real tools (all backends)
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: ./.github/actions/setup-tools
+      - run: npm ci
+      - run: npm run compile
+      - name: Test actual NASM, QEMU, GDB and external C build
+        run: node scripts/ci/run-suite.cjs --suite full --output artifacts/integration
+      - name: Upload complete backend logs and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-linux
+          path: artifacts/integration/
+          if-no-files-found: warn
+
+  host:
+    name: VS Code ${{ matrix.vscode }} (${{ matrix.os }})
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            vscode: '1.96.4'
+            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies
+          - os: ubuntu-24.04
+            vscode: stable
+            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies
+          - os: macos-14
+            vscode: stable
+            phases: trusted,untrusted,resources,debug,display
+          - os: windows-2022
+            vscode: stable
+            phases: trusted,untrusted,resources,debug,display
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      VSCODE_VERSION: ${{ matrix.vscode }}
+      QEMU_ASM_HOST_PHASES: ${{ matrix.phases }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: ./.github/actions/setup-tools
+      - run: npm ci
+      - run: npm run compile
+      - name: Native macOS / Windows NASM and RSP integration
+        if: runner.os != 'Linux'
+        run: node scripts/ci/run-suite.cjs --suite native --output artifacts/native
+      - name: Linux VS Code host
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/ci/run-suite.cjs --suite host --output artifacts/host
+      - name: macOS / Windows VS Code host
+        if: runner.os != 'Linux'
+        run: node scripts/ci/run-suite.cjs --suite host --output artifacts/host
+      - name: Upload native and host logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-${{ matrix.os }}-${{ matrix.vscode }}
+          path: artifacts/
+          if-no-files-found: warn
+
+  package:
+    name: Build installable VSIX
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Package runtime dependencies, including decoder WASM
+        run: npm exec --yes --package=@vscode/vsce@4.0.0 -- vsce package --githubBranch "$GITHUB_SHA" --out "$RUNNER_TEMP/qemu-asm.vsix"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-vsix
+          path: ${{ runner.temp }}/qemu-asm.vsix
+          if-no-files-found: error
+
+  installed:
+    name: Installed VSIX (VS Code ${{ matrix.vscode }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        vscode: ['1.96.4', stable]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     env:
       VSCODE_VERSION: ${{ matrix.vscode }}
     steps:
@@ -21,96 +163,35 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Install Linux tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86 xvfb gdb gcc binutils
-      - name: Install macOS tools
-        if: runner.os == 'macOS'
-        run: brew install nasm qemu
-      - name: Install Windows tools
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install nasm qemu -y --no-progress
-          $nasm = Get-ChildItem 'C:\Program Files\NASM*' -Filter nasm.exe -Recurse | Select-Object -First 1
-          $qemu = Get-ChildItem 'C:\Program Files\qemu' -Filter qemu-system-i386.exe -Recurse | Select-Object -First 1
-          if (!$nasm -or !$qemu) { throw 'NASM or QEMU executable not found after installation' }
-          "NASM_PATH=$($nasm.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "QEMU_PATH=$($qemu.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: ./.github/actions/setup-tools
       - run: npm ci
-      - run: npm run check
-      - run: npm run compile
-      - run: npm test
-      - run: npm run test:integration 2>&1 | tee integration.log
-        shell: bash
-        timeout-minutes: 2
-      - name: Test real QEMU debug adapter
-        run: npm run test:debug 2>&1 | tee debug-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test real QEMU VGA display
-        run: npm run test:display 2>&1 | tee display-integration.log
-        shell: bash
-        timeout-minutes: 2
-      - name: Test multi-stage image build and boot
-        run: npm run test:stage 2>&1 | tee stage-integration.log
-        shell: bash
-        timeout-minutes: 2
-      - name: Test real QEMU protected-mode debugger
-        run: npm run test:protected 2>&1 | tee protected-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test real QEMU memory and descriptor inspection
-        run: npm run test:inspection 2>&1 | tee inspection-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test actual QEMU disassembly and data breakpoints
-        run: npm run test:machine 2>&1 | tee machine-debug-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test actual QEMU non-PAE paging and physical memory
-        run: npm run test:paging 2>&1 | tee paging-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test externally compiled C machine code on Linux
-        if: runner.os == 'Linux'
-        run: npm run test:c-machine 2>&1 | tee c-machine-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test C source debugging with real ELF DWARF and GDB
-        if: runner.os == 'Linux'
-        run: npm run test:c-source 2>&1 | tee c-source-integration.log
-        shell: bash
-        timeout-minutes: 4
-      - name: Test shared dependency boundaries with actual tools
-        if: runner.os == 'Linux'
-        run: npm run test:dependencies 2>&1 | tee dependency-integration.log
-        shell: bash
-        timeout-minutes: 3
-      - name: Test Linux VS Code commands and debugger
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:host 2>&1 | tee host-test.log
-        shell: bash
-      - name: Test macOS / Windows VS Code commands and debugger
-        if: runner.os != 'Linux'
-        run: npm run test:host 2>&1 | tee host-test.log
-        shell: bash
-      - name: Upload integration and host logs
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension-vsix
+          path: ${{ runner.temp }}/package
+      - name: Install separately and test packaged product modules
+        run: xvfb-run -a node scripts/ci/installed-tests.cjs --vsix "$RUNNER_TEMP/package/qemu-asm.vsix" --output artifacts/installed
+      - name: Upload installed product logs and results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: compatibility-${{ matrix.os }}-${{ matrix.vscode }}
-          path: |
-            integration.log
-            debug-integration.log
-            display-integration.log
-            stage-integration.log
-            protected-integration.log
-            inspection-integration.log
-            machine-debug-integration.log
-            paging-integration.log
-            c-machine-integration.log
-            c-source-integration.log
-            dependency-integration.log
-            host-test.log
-          if-no-files-found: ignore
+          name: installed-${{ matrix.vscode }}
+          path: artifacts/installed/
+          if-no-files-found: warn
+
+  ci:
+    name: CI result
+    if: always()
+    needs: [workflow-lint, quality, integration, host, package, installed]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      JOB_RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Require every CI layer to succeed
+        run: |
+          node <<'NODE'
+          const jobs = JSON.parse(process.env.JOB_RESULTS);
+          for (const [name, job] of Object.entries(jobs)) console.log(`${name}: ${job.result}`);
+          if (Object.values(jobs).some(job => job.result !== 'success')) process.exitCode = 1;
+          NODE

@@ -1,5 +1,7 @@
 # 第二轮架构收敛与验收
 
+> 历史阶段记录：以下结果对应文中注明的版本、提交与执行环境，不是当前全部平台的兼容承诺。使用指南见[文档导航](README.md)，当前工具组合见[兼容性](COMPATIBILITY.md)。
+
 日期：2026-10-15。分支：`refactor/capability-architecture`。本轮产品代码提交：`bbd5c29`；后续文档提交不改变产品代码。第一轮验收保留在 [ARCHITECTURE_VALIDATION.md](ARCHITECTURE_VALIDATION.md)，当前图及目录见 [架构说明](ARCHITECTURE.md)、[完整结构](STRUCTURE.md)。
 
 ## 收敛结果

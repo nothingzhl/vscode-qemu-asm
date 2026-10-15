@@ -1,0 +1,37 @@
+name: Install native integration tools
+description: Install NASM and QEMU for the runner; Linux also gets the C source toolchain and Xvfb.
+runs:
+  using: composite
+  steps:
+    - name: Linux tools
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends nasm qemu-system-x86 xvfb xauth gdb gcc binutils libasound2t64 libgbm1 libgtk-3-0t64 libnss3
+    - name: macOS tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew list nasm >/dev/null 2>&1 || brew install nasm
+        brew list qemu >/dev/null 2>&1 || brew install qemu
+    - name: Windows tools
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        choco install nasm qemu -y --no-progress
+        $nasm = Get-Command nasm.exe -ErrorAction SilentlyContinue
+        $qemu = Get-Command qemu-system-i386.exe -ErrorAction SilentlyContinue
+        if (!$nasm) { $nasm = Get-ChildItem 'C:\Program Files\NASM*' -Filter nasm.exe -Recurse | Select-Object -First 1 }
+        if (!$qemu) { $qemu = Get-ChildItem 'C:\Program Files\qemu' -Filter qemu-system-i386.exe -Recurse | Select-Object -First 1 }
+        if (!$nasm -or !$qemu) { throw 'NASM or QEMU executable not found after installation' }
+        $nasmPath = if ($nasm.Source) { $nasm.Source } else { $nasm.FullName }
+        $qemuPath = if ($qemu.Source) { $qemu.Source } else { $qemu.FullName }
+        "NASM_PATH=$nasmPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "QEMU_PATH=$qemuPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    - name: Record actual tool versions
+      shell: bash
+      run: |
+        "${NASM_PATH:-nasm}" -v
+        "${QEMU_PATH:-qemu-system-i386}" --version
+        if [ "$RUNNER_OS" = Linux ]; then gdb --version; gcc --version; fi

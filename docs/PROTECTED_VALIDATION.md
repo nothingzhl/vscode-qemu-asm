@@ -1,5 +1,7 @@
 # 0.3.0 二阶段与保护模式验证
 
+> 历史阶段记录：以下结果对应文中注明的版本、提交与执行环境，不是当前全部平台的兼容承诺。使用指南见[文档导航](README.md)，当前工具组合见[兼容性](COMPATIBILITY.md)。
+
 日期：2026-10-15。环境：Linux x86_64 / Debian 13、Node.js 22.23.3、NASM 2.16.03、QEMU 10.0.13 TCG。目标宿主为官方 VS Code 1.96.4 与 1.142.0，使用 Xvfb。
 
 以下结果来自实际 NASM、QEMU TCG 与 VS Code 宿主；CPU/协议验收没有用接口桩代替。原生 Windows/macOS 与手工 UI 交互仍按下方范围单独列出。
@@ -76,7 +78,7 @@ xvfb-run -a npm run test:host
 
 通过 `NASM_PATH`、`QEMU_PATH` 指定工具路径。`VSCODE_EXECUTABLE_PATH` 指向已安装的 VS Code，或用 `VSCODE_VERSION=1.96.4` 选择下载版本。Windows / macOS 使用桌面会话运行 `npm run test:host`，不需要 Xvfb。宿主测试使用独立临时用户配置及扩展目录。
 
-人工学习流程见 [README](../README.md#二阶段与保护模式学习流程)。在 `stage2.asm` 的 `mov cr0, eax` 处断下，单步至远跳转之后，再在 `learning_breakpoint` 后的 `nop` 处查看 EAX/EBX、EBP、ESP 和原始栈。上方截图是本轮保护模式验收；README 另保留了 0.2.0 的显示器截图。
+人工学习流程见[二阶段与保护模式](DEBUGGING.md#二阶段与保护模式)。在 `stage2.asm` 的 `mov cr0, eax` 处断下，单步至远跳转之后，再在 `learning_breakpoint` 后的 `nop` 处查看 EAX/EBX、EBP、ESP 和原始栈。上方截图是本轮保护模式验收，另有[显示器历史截图](DISPLAY_VALIDATION.md)。
 
 ## 限制与待验收
 
