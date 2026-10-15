@@ -26,7 +26,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(inspector,
     vscode.window.registerWebviewViewProvider('qemuAsm.inspector', inspector, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.debug.registerDebugAdapterTrackerFactory('qemu-asm', { createDebugAdapterTracker: session => inspector.createDebugAdapterTracker(session) }),
-    vscode.commands.registerCommand('qemuAsm.showInspector', () => vscode.commands.executeCommand('qemuAsm.inspector.focus'))
+    vscode.commands.registerCommand('qemuAsm.showInspector', () => vscode.commands.executeCommand('qemuAsm.inspector.focus')),
+    vscode.commands.registerCommand('qemuAsm.showDisassembly', () => inspector.show('disassembly')),
+    vscode.commands.registerCommand('qemuAsm.showDataBreakpoints', () => inspector.show('watchpoints'))
   );
   async function folder(): Promise<vscode.WorkspaceFolder> {
     const folders = vscode.workspace.workspaceFolders;

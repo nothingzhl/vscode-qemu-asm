@@ -2,7 +2,7 @@
   'use strict';
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
-  const tabs = ['memory', 'gdt', 'idt'];
+  const tabs = ['memory', 'disassembly', 'watchpoints', 'gdt', 'idt'];
   let state;
   const hex = (number, width = 8) => typeof number === 'number' ? `0x${number.toString(16).toUpperCase().padStart(width, '0')}` : '—';
   const element = (tag, text, className) => {
@@ -12,7 +12,7 @@
     return node;
   };
   const cell = (row, text, className) => { const td = element('td', text, className); row.appendChild(td); return td; };
-  const post = (type, detail = {}) => vscode.postMessage({ type, ...detail });
+  const post = (type, detail = {}) => vscode.postMessage({ type, ...(['instructionBreakpoint', 'watchpoint'].includes(type) ? { generation: state?.generation, sessionId: state?.sessionId } : {}), ...detail });
   const configure = form => post('configure', { form });
   const notify = text => { $('notice').textContent = text; $('notice').hidden = !text; };
   for (let index = 0; index < 16; index += 1) {
@@ -85,33 +85,86 @@
       body.appendChild(row);
     }
   }
+  const accessName = access => ({ write: '写入', read: '读取', readWrite: '读取或写入' }[access] ?? access);
+  const originName = origin => ({ native: 'VS Code', custom: '面板', both: 'VS Code + 面板' }[origin] ?? '—');
+  function renderDisassembly(snapshot, canMutate) {
+    const data = snapshot.disassembly; const body = $('disassembly-body'); body.replaceChildren();
+    $('disassembly-meta').textContent = data ? `${data.bits} 位 · PC ${hex(data.pc)} · ${data.instructions.length} 条` : '';
+    for (const instruction of data?.instructions ?? []) {
+      const address = Number(instruction.address);
+      const breakpoint = snapshot.instructionBreakpoints?.find(item => item.address === address);
+      const row = element('tr'); row.dataset.address = String(address);
+      if (address === data.pc) row.classList.add('current-pc');
+      if (instruction.presentationHint === 'invalid') row.classList.add('invalid-instruction');
+      const toggle = element('button', breakpoint ? '●' : '○', `breakpoint-toggle${breakpoint ? ' enabled' : ''}`);
+      toggle.type = 'button'; toggle.dataset.address = String(address);
+      toggle.setAttribute('aria-label', `${breakpoint ? '删除' : '添加'}地址 ${hex(address)} 的面板断点`);
+      toggle.title = breakpoint?.origin === 'native' ? 'VS Code 原生断点，请在原生断点视图删除' : breakpoint?.origin === 'both' ? '删除面板断点；VS Code 原生断点仍保留' : breakpoint ? '删除面板地址断点' : '添加地址断点';
+      toggle.disabled = !canMutate || breakpoint?.origin === 'native' || instruction.presentationHint === 'invalid';
+      toggle.addEventListener('click', () => post('instructionBreakpoint', { address, enabled: !breakpoint }));
+      cell(row, '').appendChild(toggle);
+      const location = cell(row, `${address === data.pc ? '▶ ' : '  '}${hex(address)}`, 'instruction-address');
+      if (breakpoint?.origin === 'native' || breakpoint?.origin === 'both') location.appendChild(element('span', 'VS Code', 'tag'));
+      cell(row, instruction.instructionBytes.match(/.{1,2}/g)?.join(' ').toUpperCase() ?? '—', 'instruction-bytes');
+      cell(row, instruction.instruction, 'instruction-text'); body.appendChild(row);
+    }
+  }
+  function renderWatchpoints(snapshot, canMutate) {
+    const data = snapshot.watchpoints; const body = $('watchpoint-body'); body.replaceChildren();
+    const hit = data?.lastHit;
+    $('watchpoint-hit').hidden = !hit;
+    $('watchpoint-hit').textContent = hit ? `已命中：${accessName(hit.access)} ${hex(hit.address)} · 暂停 PC ${hex(hit.pc)}` : '';
+    for (const breakpoint of data?.breakpoints ?? []) {
+      const row = element('tr'); row.dataset.id = String(breakpoint.id); row.dataset.address = String(breakpoint.address);
+      const matched = hit?.ids.includes(breakpoint.id);
+      if (matched) row.classList.add('watchpoint-hit');
+      cell(row, matched ? '● 已命中' : breakpoint.verified ? '● 已启用' : '未验证', 'breakpoint-status');
+      cell(row, hex(breakpoint.address)); cell(row, `${breakpoint.size} 字节`); cell(row, accessName(breakpoint.access)); cell(row, originName(breakpoint.origin));
+      const remove = element('button', '删除', 'secondary watchpoint-remove'); remove.type = 'button'; remove.dataset.id = String(breakpoint.id);
+      remove.disabled = !canMutate || breakpoint.origin === 'native';
+      remove.title = breakpoint.origin === 'native' ? 'VS Code 原生数据断点，请在原生断点视图删除' : breakpoint.origin === 'both' ? '删除面板断点；VS Code 原生数据断点仍保留' : '删除面板数据断点';
+      remove.addEventListener('click', () => post('watchpoint', { action: 'remove', id: breakpoint.id })); cell(row, '').appendChild(remove);
+      if (breakpoint.message) row.title = breakpoint.message;
+      body.appendChild(row);
+    }
+    if (data && !data.breakpoints.length) { const row = element('tr'); const td = cell(row, '尚未设置数据断点。添加要监视的地址后继续运行。', 'table-empty'); td.colSpan = 6; body.appendChild(row); }
+  }
   function render(snapshot) {
     const previousAddress = state?.form.address;
     state = snapshot;
     notify('');
-    const { form } = snapshot; const memory = form.tab === 'memory';
+    const { form } = snapshot; const memory = form.tab === 'memory'; const descriptor = form.tab === 'gdt' || form.tab === 'idt';
     for (const tab of tabs) {
       const selected = tab === form.tab;
       $(`tab-${tab}`).setAttribute('aria-selected', String(selected)); $(`tab-${tab}`).tabIndex = selected ? 0 : -1;
     }
-    $('memory-view').hidden = !memory; $('descriptor-view').hidden = memory;
+    $('memory-view').hidden = !memory; $('descriptor-view').hidden = !descriptor; $('disassembly-view').hidden = form.tab !== 'disassembly'; $('watchpoint-view').hidden = form.tab !== 'watchpoints';
     if (document.activeElement !== $('address') || previousAddress !== form.address) $('address').value = hex(form.address);
     $('follow').value = form.follow;
-    const canRead = snapshot.status === 'stopped';
+    const canRead = snapshot.status === 'stopped'; const canMutate = canRead && !snapshot.busy && !snapshot.stale;
     $('status').textContent = snapshot.message; $('status-dot').className = `dot ${snapshot.status}`;
     document.body.classList.toggle('stale', snapshot.stale);
-    const data = memory ? snapshot.memory : snapshot[form.tab];
+    const data = snapshot[form.tab];
     $('stale').hidden = !snapshot.stale || !data;
     $('refresh').disabled = !canRead || snapshot.busy;
     $('address').disabled = !canRead; $('go').disabled = !canRead || snapshot.busy; $('follow').disabled = !canRead;
     const memoryAddress = snapshot.memory?.address ?? form.address;
     $('memory-prev').disabled = !canRead || snapshot.busy || memoryAddress === 0;
     $('memory-next').disabled = !canRead || snapshot.busy || memoryAddress >= 0xffffff00;
-    const table = memory ? undefined : snapshot[form.tab];
+    const table = descriptor ? snapshot[form.tab] : undefined;
     $('descriptor-prev').disabled = !canRead || snapshot.busy || (table?.start ?? 0) === 0;
     $('descriptor-next').disabled = !canRead || snapshot.busy || !table || table.start + table.count >= table.totalEntries;
     $('empty').hidden = Boolean(data);
-    if (memory) renderMemory(snapshot.memory); else renderDescriptors(table, form.tab);
+    if (document.activeElement !== $('disassembly-address') || state.disassembly?.address !== snapshot.disassembly?.address) $('disassembly-address').value = hex(snapshot.disassembly?.address ?? form.disassemblyAddress);
+    $('disassembly-address').disabled = !canRead; $('disassembly-go').disabled = !canRead || snapshot.busy;
+    $('disassembly-follow').checked = form.disassemblyFollow; $('disassembly-follow').disabled = !canRead;
+    $('disassembly-next').disabled = !canRead || snapshot.busy || !snapshot.disassembly || snapshot.disassembly.nextAddress > 0xffffffff;
+    for (const id of ['watchpoint-address', 'watchpoint-size', 'watchpoint-access', 'watchpoint-add']) $(id).disabled = !canMutate;
+    $('watchpoint-clear').disabled = !canMutate || !snapshot.watchpoints?.breakpoints.some(item => item.origin !== 'native');
+    if (memory) renderMemory(snapshot.memory);
+    else if (descriptor) renderDescriptors(table, form.tab);
+    else if (form.tab === 'disassembly') renderDisassembly(snapshot, canMutate);
+    else renderWatchpoints(snapshot, canMutate);
     vscode.setState({ form: { ...form } });
   }
   tabs.forEach((tab, index) => {
@@ -129,6 +182,11 @@
   $('address-form').addEventListener('submit', event => { event.preventDefault(); post('address', { address: $('address').value }); });
   $('follow').addEventListener('change', () => configure({ follow: $('follow').value }));
   $('refresh').addEventListener('click', () => post('refresh'));
+  $('disassembly-form').addEventListener('submit', event => { event.preventDefault(); post('disassemblyAddress', { address: $('disassembly-address').value }); });
+  $('disassembly-follow').addEventListener('change', () => configure({ disassemblyFollow: $('disassembly-follow').checked }));
+  $('disassembly-next').addEventListener('click', () => post('disassemblyNext'));
+  $('watchpoint-form').addEventListener('submit', event => { event.preventDefault(); post('watchpoint', { action: 'add', address: $('watchpoint-address').value, size: Number($('watchpoint-size').value), access: $('watchpoint-access').value }); });
+  $('watchpoint-clear').addEventListener('click', () => post('watchpoint', { action: 'clear' }));
   for (const prefix of ['memory', 'descriptor']) {
     $(`${prefix}-prev`).addEventListener('click', () => post('navigate', { direction: -1 }));
     $(`${prefix}-next`).addEventListener('click', () => post('navigate', { direction: 1 }));

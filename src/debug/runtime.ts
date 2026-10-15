@@ -3,7 +3,16 @@ import * as net from 'node:net';
 import { Project, Processes, qemuArguments } from '../core';
 import { decodeRegisters, RegisterLayout, registerLayout, RspClient } from './rsp';
 
-export interface StoppedEvent { reason: 'entry' | 'breakpoint' | 'step' | 'pause' | 'exception'; signal?: number }
+export type WatchAccess = 'read' | 'write' | 'readWrite';
+export interface DataWatchpoint { address: number; size: 1 | 2 | 4; access: WatchAccess }
+export interface StoppedEvent {
+  reason: 'entry' | 'breakpoint' | 'data breakpoint' | 'step' | 'pause' | 'exception';
+  signal?: number;
+  /** QEMU 报告的监视点起始地址；访问可以从范围外开始并与它重叠。 */
+  dataAddress?: number;
+  /** QEMU 实际回复的 watch / rwatch / awatch 类型。 */
+  dataAccess?: WatchAccess;
+}
 
 /** 只负责一个单 CPU 的 QEMU 进程；源码映射由 DAP 适配器负责。 */
 export class DebugRuntime extends EventEmitter {
@@ -11,12 +20,18 @@ export class DebugRuntime extends EventEmitter {
   private client?: RspClient;
   private layout: RegisterLayout[] = [];
   private breakpoints = new Set<number>();
+  private dataBreakpoints = new Map<string, DataWatchpoint>();
   private running = false;
   private stopping = false;
   private ended = false;
   private launched = false;
   private nextStop: StoppedEvent['reason'] = 'breakpoint';
   private breakpointStep?: { address: number; step: boolean; pause: boolean; awaiting: boolean };
+  private steppedWatch = false;
+  private watchTrapCheck?: { registers: Record<string, number>; step: boolean };
+  private pauseRequested = false;
+  private physicalStop = true;
+  private stopPackets: Promise<void> = Promise.resolve();
   private disposal?: Promise<void>;
 
   constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly extraArgs: readonly string[] = []) { super(); }
@@ -55,20 +70,11 @@ export class DebugRuntime extends EventEmitter {
       });
       this.client.on('exit', () => { this.finish(); void this.dispose(); });
       this.client.on('stop', (packet: string) => {
-        this.running = false;
-        const internal = this.breakpointStep;
-        if (internal) {
-          internal.awaiting = false;
-          this.running = true;
-          void this.afterBreakpointStep(packet, internal).catch(error => {
-            this.finish(error as Error);
-            void this.dispose();
-          });
-          return;
-        }
-        const signal = parseInt(packet.slice(1, 3), 16);
-        const reason = signal === 5 ? this.nextStop : signal === 2 ? 'pause' : 'exception';
-        this.emit('stopped', { reason, signal } satisfies StoppedEvent);
+        this.physicalStop = true;
+        this.stopPackets = this.stopPackets.then(() => this.handleStop(packet)).catch(error => {
+          this.finish(error as Error);
+          void this.dispose();
+        });
       });
       await this.client.command('qSupported:multiprocess+;qXfer:features:read+;xmlRegisters=i386');
       const target = await this.readTarget('target.xml');
@@ -89,15 +95,67 @@ export class DebugRuntime extends EventEmitter {
     const client = this.requireStopped();
     for (const address of addresses) this.validateAddress(address);
     const desired = new Set(addresses);
-    for (const address of this.breakpoints) {
-      if (desired.has(address)) continue;
-      this.expectOK(await client.command(`z1,${address.toString(16)},1`), '移除硬件断点');
-      this.breakpoints.delete(address);
+    const previous = new Set(this.breakpoints);
+    const update = async (target: Set<number>) => {
+      for (const address of this.breakpoints) {
+        if (target.has(address)) continue;
+        this.expectOK(await client.command(`z1,${address.toString(16)},1`), '移除硬件断点');
+        this.breakpoints.delete(address);
+      }
+      for (const address of target) {
+        if (this.breakpoints.has(address)) continue;
+        this.expectOK(await client.command(`Z1,${address.toString(16)},1`), '设置硬件断点');
+        this.breakpoints.add(address);
+      }
+    };
+    try { await update(desired); }
+    catch (error) {
+      try { await update(previous); }
+      catch (rollback) {
+        const failure = new Error(`硬件断点设置失败且无法恢复旧设置：${(rollback as Error).message}`);
+        this.finish(failure);
+        await this.dispose();
+        throw failure;
+      }
+      throw error;
     }
-    for (const address of desired) {
-      if (this.breakpoints.has(address)) continue;
-      this.expectOK(await client.command(`Z1,${address.toString(16)},1`), '设置硬件断点');
-      this.breakpoints.add(address);
+  }
+
+  /** 整批替换数据断点。失败时恢复旧集合，不把半完成的设置留给适配器。 */
+  async setDataBreakpoints(points: DataWatchpoint[]): Promise<void> {
+    const client = this.requireStopped();
+    if (points.length > 16) throw new Error('最多同时设置 16 个数据断点');
+    const desired = new Map<string, DataWatchpoint>();
+    for (const point of points) {
+      this.validateAddress(point.address);
+      if (![1, 2, 4].includes(point.size) || point.address + point.size > 0x100000000) throw new Error('数据断点长度必须是 1、2 或 4 字节且地址不能溢出');
+      if (!['read', 'write', 'readWrite'].includes(point.access)) throw new Error('数据断点访问类型必须是 read、write 或 readWrite');
+      const copy = { ...point };
+      desired.set(watchKey(copy), copy);
+    }
+    const previous = new Map(this.dataBreakpoints);
+    const update = async (target: Map<string, DataWatchpoint>) => {
+      for (const [key, point] of this.dataBreakpoints) {
+        if (target.has(key)) continue;
+        this.expectOK(await client.command(watchCommand(point, false)), '移除数据断点');
+        this.dataBreakpoints.delete(key);
+      }
+      for (const [key, point] of target) {
+        if (this.dataBreakpoints.has(key)) continue;
+        this.expectOK(await client.command(watchCommand(point, true)), '设置数据断点');
+        this.dataBreakpoints.set(key, point);
+      }
+    };
+    try { await update(desired); }
+    catch (error) {
+      try { await update(previous); }
+      catch (rollback) {
+        const failure = new Error(`数据断点设置失败且无法恢复旧设置：${(rollback as Error).message}`);
+        this.finish(failure);
+        await this.dispose();
+        throw failure;
+      }
+      throw error;
     }
   }
 
@@ -105,6 +163,9 @@ export class DebugRuntime extends EventEmitter {
     const client = this.requireStopped();
     const registers = await this.registers();
     const address = instructionAddress(registers);
+    this.watchTrapCheck = this.steppedWatch ? { registers, step } : undefined;
+    this.steppedWatch = false;
+    this.pauseRequested = false;
     this.nextStop = step ? 'step' : 'breakpoint';
     if (this.breakpoints.has(address)) {
       // QEMU 的 Z1 在 c 后会原地再次触发，先临时移除并完成一条指令。
@@ -112,6 +173,7 @@ export class DebugRuntime extends EventEmitter {
       this.breakpointStep = { address, step, pause: false, awaiting: true };
     }
     this.running = true;
+    this.physicalStop = false;
     try { await client.resume(this.breakpointStep ? true : step); }
     catch (error) { this.running = false; throw error; }
   }
@@ -119,6 +181,7 @@ export class DebugRuntime extends EventEmitter {
   async pause(): Promise<void> {
     const client = this.requireClient();
     if (!this.running) return;
+    this.pauseRequested = true;
     if (this.breakpointStep) this.breakpointStep.pause = true;
     await new Promise<void>((resolve, reject) => {
       const cleanup = () => { clearTimeout(timer); this.off('stopped', stopped); this.off('terminated', terminated); };
@@ -134,13 +197,16 @@ export class DebugRuntime extends EventEmitter {
       this.once('stopped', stopped);
       this.once('terminated', terminated);
       try {
-        if (!this.breakpointStep || this.breakpointStep.awaiting) client.interrupt();
+        if (!this.physicalStop && (!this.breakpointStep || this.breakpointStep.awaiting)) client.interrupt();
       } catch (error) { cleanup(); reject(error); }
     });
   }
 
   async registers(): Promise<Record<string, number>> {
-    const client = this.requireStopped();
+    return this.readRegisters(this.requireStopped());
+  }
+
+  private async readRegisters(client: RspClient): Promise<Record<string, number>> {
     const registers = decodeRegisters(await client.command('g'), this.layout);
     const monitor = await client.command(`qRcmd,${Buffer.from('info registers').toString('hex')}`);
     Object.assign(registers, monitorRegisters(monitor));
@@ -178,20 +244,56 @@ export class DebugRuntime extends EventEmitter {
     this.emit('terminated', error ? { error: error.message } : {});
   }
 
+  private async handleStop(packet: string): Promise<void> {
+    if (this.stopping || !this.running) return;
+    this.physicalStop = true;
+    const event = stoppedEvent(packet, this.nextStop);
+    const check = this.watchTrapCheck;
+    this.watchTrapCheck = undefined;
+    // TCG 的单步若先命中 watch，下一次 resume 可能先交付残留的单步 trap。
+    // 只忽略一次完全无寄存器进展的普通 SIGTRAP；LOOP/REP 的真实单步仍可见。
+    if (check && event.signal === 5 && event.reason !== 'data breakpoint' && !this.pauseRequested && !this.breakpointStep?.pause) {
+      const current = await this.readRegisters(this.requireClient());
+      if (Object.keys(check.registers).every(name => current[name] === check.registers[name]) &&
+          Object.keys(current).every(name => current[name] === check.registers[name]) &&
+          !this.pauseRequested && !this.breakpointStep?.pause) {
+        const internal = this.breakpointStep;
+        if (internal) internal.awaiting = true;
+        this.physicalStop = false;
+        await this.requireClient().resume(internal ? true : check.step);
+        return;
+      }
+    }
+    const internal = this.breakpointStep;
+    if (internal) {
+      internal.awaiting = false;
+      await this.afterBreakpointStep(packet, internal);
+      return;
+    }
+    this.running = false;
+    if (event.reason !== 'data breakpoint' && event.signal === 5 && this.pauseRequested) event.reason = 'pause';
+    this.pauseRequested = false;
+    if (event.reason === 'data breakpoint' && this.nextStop === 'step') this.steppedWatch = true;
+    this.emit('stopped', event);
+  }
+
   private async afterBreakpointStep(packet: string, internal: { address: number; step: boolean; pause: boolean }): Promise<void> {
     if (this.stopping) return;
     const client = this.requireClient();
     this.expectOK(await client.command(`Z1,${internal.address.toString(16)},1`), '恢复硬件断点');
     if (this.stopping) return;
     this.breakpointStep = undefined;
-    const signal = parseInt(packet.slice(1, 3), 16);
-    if (internal.step || internal.pause || signal !== 5) {
+    const event = stoppedEvent(packet, 'step');
+    if (event.reason === 'data breakpoint' || internal.step || internal.pause || event.signal !== 5) {
       this.running = false;
-      const reason = internal.pause || signal === 2 ? 'pause' : signal === 5 ? 'step' : 'exception';
-      this.emit('stopped', { reason, signal } satisfies StoppedEvent);
+      this.pauseRequested = false;
+      if (event.reason === 'data breakpoint') this.steppedWatch = true;
+      if (event.reason !== 'data breakpoint' && internal.pause && event.signal === 5) event.reason = 'pause';
+      this.emit('stopped', event);
       return;
     }
     this.running = true;
+    this.physicalStop = false;
     await client.resume();
   }
 
@@ -231,6 +333,25 @@ export class DebugRuntime extends EventEmitter {
     }
     return result;
   }
+}
+
+function watchKey(point: DataWatchpoint): string { return `${point.access}:${point.address}:${point.size}`; }
+function watchCommand(point: DataWatchpoint, insert: boolean): string {
+  const type = { write: 2, read: 3, readWrite: 4 }[point.access];
+  return `${insert ? 'Z' : 'z'}${type},${point.address.toString(16)},${point.size.toString(16)}`;
+}
+
+/** 监视点字段优先于单步/暂停意图，避免把真实内存访问误当成内部停止吞掉。 */
+export function stoppedEvent(packet: string, expected: StoppedEvent['reason']): StoppedEvent {
+  const signal = parseInt(packet.slice(1, 3), 16);
+  const match = /(?:^T[0-9a-f]{2}|;)(watch|rwatch|awatch):([0-9a-f]+);/i.exec(packet);
+  if (match) {
+    const address = parseInt(match[2], 16);
+    if (!Number.isSafeInteger(address) || address < 0 || address > 0xffffffff) throw new Error('QEMU 返回无效的数据断点地址');
+    const access: Record<string, WatchAccess> = { watch: 'write', rwatch: 'read', awatch: 'readWrite' };
+    return { reason: 'data breakpoint', signal, dataAddress: address, dataAccess: access[match[1].toLowerCase()] };
+  }
+  return { reason: signal === 5 ? expected : signal === 2 ? 'pause' : 'exception', signal };
 }
 
 /** 使用实际 CS 隐藏 base；重置向量保持在 0xfffffff0，不会误映射成引导源码。 */

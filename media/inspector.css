@@ -64,3 +64,25 @@ tr:nth-child(even) { background: var(--vscode-list-inactiveSelectionBackground, 
 [hidden] { display: none !important; }
 body.stale .table-scroll { opacity: .65; }
 @media(max-width: 650px) { main { padding: 0 10px 10px; } .live-label { display: none; } #refresh { margin-left: auto; } .legend { margin-left: 0; } .follow-label { margin-left: 0; } .controls { gap: 6px; } }
+
+#disassembly-address, #watchpoint-address { width: 139px; font-family: var(--vscode-editor-font-family); }
+.checkbox-label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.checkbox-label input { accent-color: var(--vscode-focusBorder); }
+#disassembly-meta { font-size: 11px; color: var(--vscode-descriptionForeground); }
+.disassembly-table td { white-space: pre; border-bottom: 1px solid var(--vscode-panel-border); }
+.disassembly-table .instruction-bytes { color: var(--vscode-descriptionForeground); min-width: 170px; }
+.disassembly-table .instruction-text { min-width: 250px; }
+.disassembly-table .instruction-address .tag { margin-left: 8px; }
+.disassembly-table .current-pc { background: var(--vscode-debugToolBar-background, var(--vscode-editor-lineHighlightBackground)); box-shadow: inset 3px 0 var(--vscode-debugIcon-startForeground, #89d185); }
+.disassembly-table .current-pc .instruction-address { color: var(--vscode-debugIcon-startForeground, #89d185); }
+.disassembly-table .invalid-instruction { color: var(--vscode-descriptionForeground); font-style: italic; }
+.breakpoint-toggle { background: transparent; color: var(--vscode-descriptionForeground); font-size: 17px; padding: 0 5px; line-height: 18px; }
+.breakpoint-toggle.enabled { color: var(--vscode-debugIcon-breakpointForeground, #e56868); }
+.breakpoint-toggle:hover { background: var(--vscode-toolbar-hoverBackground); }
+.watchpoint-table td { border-bottom: 1px solid var(--vscode-panel-border); white-space: nowrap; }
+.watchpoint-hit { background: var(--vscode-editor-findMatchHighlightBackground, #785719) !important; }
+.hit-message { color: var(--vscode-debugIcon-breakpointForeground, #e56868); font: 12px var(--vscode-editor-font-family); }
+.table-empty { color: var(--vscode-descriptionForeground); font-family: var(--vscode-font-family); }
+.toolbar { flex-wrap: wrap; }
+.tabs { gap: 1px; }
+.tabs button { padding: 9px 10px; }
