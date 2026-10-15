@@ -13,6 +13,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
       - run: npm ci
       - run: npm run check
       - run: npm run compile
+      - run: npm test
+      - run: npm run test:integration
+        timeout-minutes: 2

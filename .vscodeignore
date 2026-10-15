@@ -6,3 +6,8 @@ node_modules/**
 **/*.map
 .gitignore
 package-lock.json
+test/**
+scripts/**
+CLOUD_TASK.md
+AGENTS.md
+docs/**

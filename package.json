@@ -1,7 +1,7 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中编写、构建和调试 QEMU 汇编项目（开发中）。",
+  "description": "在 VS Code 中创建、构建和运行 x86 NASM 引导扇区项目。",
   "version": "0.0.1",
   "private": true,
   "publisher": "nothingzhl",
@@ -20,19 +20,76 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "check": "tsc --noEmit -p ./"
+    "check": "tsc --noEmit -p ./",
+    "test": "npm run compile && node --test test/*.test.cjs",
+    "test:integration": "npm run compile && node scripts/integration.cjs"
   },
   "contributes": {
     "commands": [
       {
-        "command": "qemuAsm.showProjectInfo",
-        "title": "QEMU Assembly: 查看项目说明"
+        "command": "qemuAsm.checkEnvironment",
+        "title": "QEMU Assembly: 检查环境"
+      },
+      {
+        "command": "qemuAsm.createProject",
+        "title": "QEMU Assembly: 创建引导项目"
+      },
+      {
+        "command": "qemuAsm.build",
+        "title": "QEMU Assembly: 构建"
+      },
+      {
+        "command": "qemuAsm.run",
+        "title": "QEMU Assembly: 构建并运行"
+      },
+      {
+        "command": "qemuAsm.stop",
+        "title": "QEMU Assembly: 停止"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "QEMU Assembly",
+      "properties": {
+        "qemuAsm.nasmPath": {
+          "type": "string",
+          "default": "nasm",
+          "scope": "resource",
+          "description": "NASM 可执行文件；相对路径以所选工作区为基准，裸命令从 PATH 查找。"
+        },
+        "qemuAsm.qemuPath": {
+          "type": "string",
+          "default": "qemu-system-i386",
+          "scope": "resource",
+          "description": "QEMU 可执行文件；相对路径以所选工作区为基准。"
+        },
+        "qemuAsm.projectDirectory": {
+          "type": "string",
+          "default": ".",
+          "scope": "resource",
+          "description": "包含 qemu-asm.json 的目录，相对所选工作区解析。"
+        },
+        "qemuAsm.qemuArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "附加参数数组，仅支持 -m、-cpu、-smp 及其值；例如 [\"-m\", \"32M\"]。"
+        }
+      }
+    }
   },
   "devDependencies": {
     "@types/node": "22.20.5",
     "@types/vscode": "1.96.0",
     "typescript": "5.9.3"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "执行外部工具与创建项目需要工作区信任。"
+    },
+    "virtualWorkspaces": false
   }
 }
