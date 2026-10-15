@@ -1,6 +1,6 @@
 # QEMU Assembly Toolkit
 
-用于 VS Code 1.96+ 的操作系统学习插件。支持创建和构建 x86 NASM 引导项目、QEMU 运行、右侧模拟显示器，以及从 16 位实模式切换到 32 位保护模式的源码调试、寄存器、标志位与调用栈。0.4.0 增加内存十六进制/ASCII 查看、变化高亮，以及 GDT、IDT 和实模式向量表查看；学习流程与本轮验证见[内存与描述符表](docs/INSPECTION_VALIDATION.md)。暂不提供语法高亮和补全。
+用于 VS Code 1.96+ 的 x86 汇编与操作系统开发调试工具。支持构建 NASM 引导项目、QEMU 运行、右侧模拟显示器，以及从 16 位实模式切换到 32 位保护模式的源码调试、寄存器、标志位与调用栈。提供内存、GDT/IDT 查看；0.5.0 增加反汇编、指令地址断点和内存数据断点，操作与验证见[反汇编与数据断点](docs/MACHINE_DEBUG_VALIDATION.md)。已有项目可通过 `qemu-asm.json` 配置接入，内置项目模板用于快速检查环境。暂不提供语法高亮和补全。
 
 ## 安装与快速开始
 
@@ -17,7 +17,7 @@ npm run compile
 在 VS Code 打开本仓库，按 F5 启动扩展开发宿主。在宿主中打开并信任一个本地文件夹，然后从命令面板依次执行：
 
 1. **QEMU Assembly: 检查环境**：显示 NASM、qemu-system-i386 的路径和版本；缺失时提示配置方法。
-2. **QEMU Assembly: 创建引导项目**：选择目录，生成 `boot.asm` 和 `qemu-asm.json`，并保存该工作区的项目位置。学习二阶段加载和保护模式时，改用 **QEMU Assembly: 创建二阶段保护模式项目**，会额外生成 `stage2.asm`。任一目标文件已存在则拒绝覆盖；若中途冲突，仅回滚本次创建的文件。
+2. 已有 NASM 项目可按下方[配置](#配置)添加 `qemu-asm.json`。需要最小项目检查环境时，执行 **QEMU Assembly: 创建引导项目**：选择目录，生成 `boot.asm` 和 `qemu-asm.json`，并保存该工作区的项目位置。也可用 **QEMU Assembly: 创建二阶段保护模式项目**，额外生成 `stage2.asm`。任一目标文件已存在则拒绝覆盖；若中途冲突，仅回滚本次创建的文件。
 3. **QEMU Assembly: 构建并运行**：保存文件、停止已有实例、重新构建，再通过 TCG 无界面启动 QEMU。单扇区示例在输出面板出现 `QEMU_ASM_BOOT_OK`，二阶段示例出现 `PROTECTED_MODE_OK`，表示已引导成功。
 4. **QEMU Assembly: 停止**：或点击状态栏，停止插件启动的进程。重复运行会先停止上一实例；扩展退出也会清理。
 
@@ -25,7 +25,7 @@ npm run compile
 
 安装分发版本时，可在仓库根目录执行 `npx @vscode/vsce package` 生成 VSIX，然后通过 VS Code 的“扩展：从 VSIX 安装”安装。不自动发布 Marketplace。
 
-## 在 VS Code 中学习与调试
+## 在 VS Code 中调试
 
 1. 创建引导项目后打开 `boot.asm`，在可执行指令行的左侧点击设置断点（F9）。`.asm` 文件会识别为“NASM（操作系统学习）”；已有其他汇编插件时，可在右下角手动选择该语言模式。
 2. 执行 **QEMU Assembly: 开始引导调试**，或在“运行和调试”中选择 **QEMU 16/32 位引导调试**。插件会保存文件、重新构建，并在 BIOS 引导到 `0x7c00` 后暂停。
@@ -36,7 +36,7 @@ npm run compile
 
 单扇区示例包含 `write_char` 函数及 `push bp / mov bp, sp` 栈帧。在函数内 `push ax` 后打断点，能够观察 SP 下移、AX 入栈以及返回地址；继续经过 `pop` / `ret` 后观察恢复过程。已有项目不会被自动替换。
 
-### 二阶段与保护模式学习流程
+### 二阶段与保护模式示例
 
 1. 在空目录执行 **QEMU Assembly: 创建二阶段保护模式项目**。`boot.asm` 是 BIOS 装入的 512 字节引导扇区，`stage2.asm` 是加载到 `0x8000` 的 1024 字节二阶段程序。
 2. 打开两个文件，在 `boot.asm` 的读盘指令附近，以及 `stage2.asm` 的 `mov cr0, eax`、远跳转和 `protected_entry` 后的指令设置断点。开始调试后，F5 可从引导文件继续到二阶段文件。
@@ -50,7 +50,7 @@ npm run compile
 
 ### 内存与描述符表
 
-调试暂停后执行 **QEMU Assembly: 查看内存与描述符表**，打开底部视图；调试工具栏也有入口。它与右侧模拟显示器可以同时使用。
+调试暂停后执行 **QEMU Assembly: 查看内存与描述符表**，打开底部“QEMU 调试观察器”；调试工具栏也有入口。它与右侧模拟显示器可以同时使用。
 
 - **内存**：输入 `0x` 开头的十六进制地址或十进制地址，每页查看 256 字节、ASCII 和变化高亮。选择跟随 `SS:ESP / SP` 或 `SS:EBP / BP`，单步时自动跟随实际栈地址；指针宽度和基址取自 SS 缓存。
 - **GDT**：查看 GDTR 基址、界限、段类型、基址、有效界限、P/DPL、位宽和 G，并识别 LDT/TSS、调用门与任务门。当前使用该项的 CS/DS/SS 等段选择子会显示标记；缓存与当前表项不同会提示。悬停行可查看原始字节，表格每页 64 项。
@@ -77,11 +77,23 @@ GDT、IDT 的实际界面及截图复现方式见[本轮验证](docs/INSPECTION_
 
 调试使用 QEMU 内置的 GDB Remote Serial Protocol，自动分配仅监听 `127.0.0.1` 的临时端口；**不需要额外安装 GDB 或其他调试插件**。启动、失败、重启及停止会清理本会话创建的 QEMU、连接与临时 listing。
 
+### 反汇编与数据断点
+
+暂停后执行 **QEMU Assembly: 查看反汇编**。底部“反汇编”页签默认跟随当前指令，显示地址、机器码、NASM 风格指令与 PC 高亮；可输入线性地址跳转、翻到后 64 条，并点击行首圆点添加地址断点。没有源码映射的代码也能按指令调试，F10 可跳过 CALL。支持 VS Code 原生反汇编与指令断点；解码器随插件分发，无需额外工具。
+
+执行 **QEMU Assembly: 查看数据断点**，输入线性地址，选择 1、2 或 4 字节和写入、读取或读写，再添加并继续运行。匹配内存访问后暂停，面板显示监视地址、访问类型及暂停 PC；访问指令已经完成，因此 PC 指向后续指令。最多设置 16 个不同的数据断点，支持 VS Code 原生数据断点及栈内存变量的访问断点。
+
+面板和 VS Code 原生断点分别管理：列表标明来源，删除面板断点不会删除原生界面仍持有的配置。读取和修改要求可信工作区且 CPU 暂停；运行时只保留标注的旧快照。重启同一调试会话保留断点配置，清空旧快照和命中状态；结束会话释放监视点。
+
+反汇编使用当前 CS 的基址、界限和 16/32 位模式；手动地址应指向指令起点，不确定的前驱边界、无效编码和不可读字节会明确标记。数据断点的命中类型来自 QEMU 报告；读写监视点不区分本次访问究竟读还是写，相同起点/类型而长度不同的配置可能返回多个候选命中项。完整边界与实际证据见[本轮验证](docs/MACHINE_DEBUG_VALIDATION.md)。
+
+![实际无源码映射代码的反汇编、指令地址断点与当前 PC](docs/images/machine-disassembly.png)
+
 ### 当前调试范围
 
 - 单 CPU、NASM `-f bin` 平坦二进制。引导文件要求显式 `BITS 16` 和唯一的 `ORG 0x7c00`；每个加载阶段独立编译，`ORG` 必须等于配置的 `loadAddress`，阶段可显式从 `BITS 16` 或 `BITS 32` 开始。同一文件可用 `BITS 16` / `BITS 32` 切换指令编码，源码位置还会校验实际 CPU 模式。
 - 从真实 NASM listing 建立每个文件的指令地址，支持跨加载阶段的源码断点。宏、include、incbin、section 和条件预处理不支持调试映射；不可靠的映射会明确报错。调试中修改源码后须重启，重新构建映射。
-- 断点只接受指令行；标签、数据、注释、条件断点与日志断点不支持，不会自动挪到其他行。BIOS、复制到未配置地址的代码及其他未知代码不显示为已知源码。
+- 源码断点只接受指令行；标签、数据、注释、条件断点与日志断点不支持，不会自动挪到其他行。BIOS、复制到未配置地址的代码及其他未知代码不显示为已知源码，可在当前 CS 范围内反汇编、单步或设置地址断点。指令/数据断点暂不支持条件、命中次数或日志。
 - 支持标准 16 位实模式、设置 PE 后远跳转前的 16 位过渡状态，以及关闭分页的 32 位保护模式。默认指令宽度取 CS 缓存，栈指针宽度取 SS 缓存；保护模式使用完整 EIP，支持超出 64 KiB 的指令地址，32 位 ESP 不截断为 16 位。
 - 调用者支持 16 位 near CALL 的标准 BP 链和 32 位 near CALL 的标准 EBP 链，检查返回地址与 CALL 指令边界。任意手写汇编、无 BP/EBP 栈帧、混用操作数宽度或 far CALL 不保证能还原调用栈；此时仍可查看原始栈内存。跳出需要可验证的调用者。
 - 寄存器、标志位、栈、内存与描述符表均为只读；历史调用者没有寄存器快照，须选择当前栈帧查看。调用栈不是 ELF/DWARF 符号展开。描述符表每次最多读取 128 项；LDT 表、页表和完整中断调试尚未提供。
@@ -160,6 +172,7 @@ npm run test:display
 npm run test:stage
 npm run test:protected
 npm run test:inspection
+npm run test:machine
 ```
 
 `npm test` 覆盖配置解析、空格路径、多工作区基准、不覆盖文件、旧镜像失效、启动失败、超时、取消、符号链接边界、停止与强制终止、异常信号终止、分块 UTF-8 中文日志。额外路径测试使用 Node 的 `path.win32` 和 `path.posix` 验证 Windows 盘符、UNC、空格与中文路径；这些测试不代替原生平台执行。测试直接运行编译后的核心模块，并覆盖 NASM listing、RSP 编码、调试请求与清理竞态；真实 listing 测试需 NASM，否则单独标记跳过。显示器另有 QMP 并发/超时、图像转换及会话清理测试。
@@ -181,6 +194,10 @@ npm run test:inspection
 
 `npm run test:inspection` 验证真实 QEMU 的内存读取、SS 基址与完整栈指针、GDTR/IDTR、GDT 选择子、IVT/IDT 门解码和读取边界。描述符解码、缓存提示与视图竞态另有单测。宿主测试的 inspection 阶段验证实际底部视图、单步刷新、变化高亮、运行时快照标记、重启/终止清空；`npm run test:inspection:ui` 另执行真实界面交互并截图。实际结果与证据见[内存与描述符表验证](docs/INSPECTION_VALIDATION.md)。
 
+`npm run test:machine` 验证真实 QEMU 的读/写/读写数据监视点、16/32 位反汇编、无源码地址断点、原生与面板断点共存、继续/单步后重复命中、重启保留配置与清理。宿主新增 machine 阶段，`npm run test:machine:ui` 实际操作地址跳转、断点增删并截图，后端 DAP 独立核对修改结果。证据见[反汇编与数据断点验证](docs/MACHINE_DEBUG_VALIDATION.md)。
+
+安装 VSIX 后，可将 `QEMU_ASM_VSIX_EXTENSION` 指向实际安装的扩展目录，再运行 `npm run test:vsix:machine`。该测试从安装包加载插件和 WebAssembly，实际验证两种模式的解码、源码单步、数据断点、内存结果与清理；Linux 无桌面环境时加 `xvfb-run -a`。
+
 可用 `NASM_PATH`、`QEMU_PATH` 环境变量覆盖集成脚本的工具路径。macOS 可先执行 `brew install nasm qemu`；Windows 可通过 Chocolatey 安装 `nasm qemu`，然后在插件设置中填写实际 `.exe` 路径。工具发现与停止行为需要在对应原生平台确认。
 
 真实 VS Code 宿主验证：
@@ -192,6 +209,6 @@ xvfb-run -a npm run test:host
 npm run test:host
 ```
 
-宿主脚本默认通过 `@vscode/test-electron` 下载稳定版 VS Code；可用 `VSCODE_VERSION=1.96.4` 选择最低支持版本，也可用 `VSCODE_EXECUTABLE_PATH` 指向已安装的 VS Code 可执行文件。脚本使用独立临时用户配置，验证真实宿主内的命令注册、信任限制、多工作区资源设置、真实 NASM/QEMU 构建运行停止、串口标记和错误 diagnostics，以及完整的 VS Code 调试会话（断点、单步、寄存器、堆栈、重启和清理）、真实显示器面板、二阶段保护模式调试和内存/描述符视图。
+宿主脚本默认通过 `@vscode/test-electron` 下载稳定版 VS Code；可用 `VSCODE_VERSION=1.96.4` 选择最低支持版本，也可用 `VSCODE_EXECUTABLE_PATH` 指向已安装的 VS Code 可执行文件。脚本使用独立临时用户配置，验证真实宿主内的命令注册、信任限制、多工作区资源设置、真实 NASM/QEMU 构建运行停止、串口标记和错误 diagnostics，以及完整的 VS Code 调试会话（断点、单步、寄存器、堆栈、重启和清理）、真实显示器面板、二阶段保护模式调试、内存/描述符视图和反汇编/数据断点。
 
 CI 矩阵覆盖 Ubuntu、macOS、Windows，以及 VS Code 1.96.4 / stable；每组安装真实 NASM/QEMU，运行核心测试、集成与宿主测试。远端结果须以实际 Actions 检查为准。当前已执行的验证、平台限制及人工交互待验收项见 [验证记录](docs/VALIDATION.md)。

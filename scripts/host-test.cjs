@@ -31,7 +31,7 @@ async function main() {
   const extensionRoot = path.resolve(__dirname, '..');
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qemu asm host, '));
   try {
-    const supportedPhases = ['trusted', 'untrusted', 'resources', 'debug', 'display', 'protected', 'inspection'];
+    const supportedPhases = ['trusted', 'untrusted', 'resources', 'debug', 'display', 'protected', 'inspection', 'machine'];
     const phases = process.env.QEMU_ASM_HOST_PHASES === undefined ? supportedPhases : process.env.QEMU_ASM_HOST_PHASES.split(',').map(phase => phase.trim()).filter(Boolean);
     if (!phases.length || phases.some(phase => !supportedPhases.includes(phase))) throw new Error(`QEMU_ASM_HOST_PHASES must name one or more phases: ${supportedPhases.join(', ')}`);
     const executable = process.env.VSCODE_EXECUTABLE_PATH || await downloadAndUnzipVSCode(process.env.VSCODE_VERSION || 'stable');

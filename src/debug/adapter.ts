@@ -7,6 +7,8 @@ import { build, Processes, Project } from '../core';
 import { SourceMap, parseListing } from './listing';
 import { SourceMaps } from './maps';
 import { inspectDescriptors, inspectMemory } from './inspection';
+import { disassemble } from './disassembly';
+import { MachineBreakpoints, machineAddress, memoryDataId, watchpoint } from './machineBreakpoints';
 import { cpuMode, DebugRuntime, instructionAddress, stackAddress, stackWidth, StoppedEvent } from './runtime';
 
 export interface DebugDisplay { readonly args: string[]; connect(): Promise<void>; dispose(): Promise<void> }
@@ -43,6 +45,9 @@ export class AssemblyDebugAdapter implements DebugAdapter {
   private phase: 'idle' | 'preparing' | 'configuring' | 'booting' | 'stopped' | 'running' | 'ended' = 'idle';
   private userLines = new Map<string, number[]>();
   private userAddresses: number[] = [];
+  private readonly machine = new MachineBreakpoints();
+  private lastDataHit?: { address: number; access: 'read' | 'write' | 'readWrite'; ids: number[]; pc: number };
+  private bootPending = false;
   private temporary?: number;
   private stopOnEntry = true;
   private internalPause = false;
@@ -85,6 +90,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     this.launchArgs = args;
     this.stopOnEntry = args.stopOnEntry !== false;
     this.ended = false;
+    this.lastDataHit = undefined;
     this.phase = 'preparing';
     const epoch = ++this.epoch;
     const project = await this.options.getProject();
@@ -125,6 +131,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       void this.finish();
     });
     await runtime.launch();
+    if (this.machine.dataPoints().length) await runtime.setDataBreakpoints(this.machine.dataPoints());
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
     await display?.connect();
     if (epoch !== this.epoch) throw new Error('调试启动已取消');
@@ -145,11 +152,11 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     }))];
   }
   private async installBreakpoints(): Promise<void> {
-    await this.runtime?.setBreakpoints([...new Set([...this.userAddresses, ...(this.temporary === undefined ? [] : [this.temporary])])]);
+    await this.runtime?.setBreakpoints([...new Set([...this.userAddresses, ...this.machine.instructionAddresses(), ...(this.temporary === undefined ? [] : [this.temporary])])]);
   }
   private async boot(): Promise<void> {
     if (!this.map || !this.runtime) throw new Error('调试器未启动');
-    this.phase = 'booting'; this.temporary = this.map.origin;
+    this.phase = 'booting'; this.bootPending = true; this.temporary = this.map.origin;
     await this.installBreakpoints();
     await this.runtime.resume();
   }
@@ -160,14 +167,18 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const registers = await this.runtime.registers();
     const mode = cpuMode(registers), bits = mode === 'protected32' ? 32 : 16;
     const pc = instructionAddress(registers);
-    if (temporary !== undefined) { this.temporary = undefined; await this.installBreakpoints(); }
-    if (booting && (!this.map || pc !== this.map.origin)) throw new Error(`未能停在引导入口，实际地址 ${hex(pc)}`);
-    if (booting && !this.stopOnEntry && !this.userAddresses.includes(pc)) { await this.continue(false); return; }
-    const reason = booting ? 'entry' : temporary === pc ? 'step' : event.reason;
+    const entry = this.bootPending && pc === this.map?.origin;
+    if (entry) this.bootPending = false;
+    if (temporary !== undefined && !this.bootPending) { this.temporary = undefined; await this.installBreakpoints(); }
+    const dataStop = event.reason === 'data breakpoint';
+    if (entry && !dataStop && !this.stopOnEntry && !this.userAddresses.includes(pc) && !this.machine.instructionHit(pc).length) { await this.continue(false); return; }
+    const reason = dataStop ? 'data breakpoint' : entry ? 'entry' : temporary === pc ? 'step' : event.reason;
+    const hitIds = dataStop && event.dataAddress !== undefined ? this.machine.dataHits(event.dataAddress, event.dataAccess ?? 'readWrite') : event.reason === 'breakpoint' ? this.machine.instructionHit(pc) : [];
+    if (dataStop && event.dataAddress !== undefined) this.lastDataHit = { address: event.dataAddress, access: event.dataAccess ?? 'readWrite', ids: hitIds, pc };
     const source = this.locate(pc, bits);
     const location = `${mode} ${hex(registers.cs)}:${hex(mode === 'real16' ? registers.eip & 0xffff : registers.eip, mode === 'real16' ? 4 : 8)} → ${hex(pc)}`;
     this.output(`[暂停 ${reason}] ${location}${source ? ` ${path.basename(source.map.sourcePath)} 第 ${source.entry.line} 行：${source.entry.text.trim()}` : '（当前地址无匹配代码模式的源码）'}\n`);
-    this.event('stopped', { reason, threadId: 1, allThreadsStopped: true, description: location });
+    this.event('stopped', { reason, threadId: 1, allThreadsStopped: true, description: dataStop && event.dataAddress !== undefined ? `数据断点 ${hex(event.dataAddress)}（${event.dataAccess ?? 'readWrite'}）；访问已完成，${location}` : location, ...(hitIds.length ? { hitBreakpointIds: hitIds } : {}) });
     this.event('invalidated', { areas: ['stacks', 'variables'] });
   }
   private async continue(step: boolean): Promise<void> {
@@ -237,7 +248,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const args = request.arguments ?? {};
     switch (request.command) {
       case 'initialize':
-        this.response(request, { supportsConfigurationDoneRequest: true, supportsReadMemoryRequest: true, supportsEvaluateForHovers: true, supportsTerminateRequest: true, supportsRestartRequest: true, supportsStepBack: false, supportsSetVariable: false }); return;
+        this.response(request, { supportsConfigurationDoneRequest: true, supportsReadMemoryRequest: true, supportsEvaluateForHovers: true, supportsTerminateRequest: true, supportsRestartRequest: true, supportsStepBack: false, supportsSetVariable: false, supportsDisassembleRequest: true, supportsInstructionBreakpoints: true, supportsDataBreakpoints: true }); return;
       case 'launch':
         await this.prepare(args); this.response(request); this.event('initialized'); return;
       case 'configurationDone': await this.boot(); this.response(request); return;
@@ -289,7 +300,10 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       case 'stepIn': await this.continue(true); this.response(request); return;
       case 'next': {
         const runtime = this.requireStopped(); const registers = await runtime.registers(); const address = instructionAddress(registers);
-        const entry = this.locate(address, cpuMode(registers) === 'protected32' ? 32 : 16)?.entry; const bytes = await runtime.readMemory(address, entry?.size ?? 1);
+        const mapped = this.locate(address, cpuMode(registers) === 'protected32' ? 32 : 16)?.entry;
+        const decoded = mapped ? undefined : (await disassemble(runtime, { address, count: 1 })).instructions[0];
+        const entry = mapped ?? (decoded && decoded.presentationHint !== 'invalid' && decoded.size > 0 ? { address, size: decoded.size } : undefined);
+        const bytes = await runtime.readMemory(address, entry?.size ?? 1);
         let opcode = 0;
         while ([0x26,0x2e,0x36,0x3e,0x64,0x65,0x66,0x67,0xf0,0xf2,0xf3].includes(bytes[opcode]) && opcode < bytes.length - 1) opcode++;
         const call = [0xe8,0x9a,0xcd].includes(bytes[opcode]) || (bytes[opcode] === 0xff && [2,3].includes((bytes[opcode + 1] >> 3) & 7));
@@ -302,6 +316,41 @@ export class AssemblyDebugAdapter implements DebugAdapter {
         this.temporary = Number(frames[1].instructionPointerReference); await this.installBreakpoints(); await this.continue(false); this.response(request); return;
       }
       case 'pause': this.trust(); await this.runtime?.pause(); this.response(request); return;
+      case 'disassemble': {
+        const result = await disassemble(this.requireStopped(), args); this.response(request, { instructions: result.instructions }); return;
+      }
+      case 'qemuAsm.disassemble':
+        this.response(request, { ...await disassemble(this.requireStopped(), args), breakpoints: this.machine.instructions().breakpoints }); return;
+      case 'setInstructionBreakpoints': {
+        const runtime = this.breakpointRuntime();
+        const breakpoints = await this.machine.setNativeInstructions(args.breakpoints ?? [], addresses => runtime.setBreakpoints(this.executionAddresses(addresses)));
+        this.response(request, { breakpoints }); return;
+      }
+      case 'qemuAsm.instructionBreakpoints': {
+        const runtime = this.requireStopped();
+        this.response(request, await this.machine.changeInstruction(args, addresses => runtime.setBreakpoints(this.executionAddresses(addresses)))); return;
+      }
+      case 'dataBreakpointInfo': {
+        const runtime = this.requireStopped();
+        let address: number, size: number;
+        try {
+          if (args.memoryReference !== undefined) { address = machineAddress(args.memoryReference); size = args.bytes === undefined ? 1 : Number(args.bytes); }
+          else if (args.variablesReference === 2 && typeof args.name === 'string' && /^0x[0-9a-f]+:0x[0-9a-f]+(?: ← (?:E?SP))?$/i.test(args.name)) {
+            const r = await runtime.registers(); address = stackAddress(r, Number(/^0x[0-9a-f]+:(0x[0-9a-f]+)/i.exec(args.name)![1])); size = cpuMode(r) === 'protected32' ? 4 : 2;
+          } else { address = machineAddress(args.name); size = args.bytes === undefined ? 1 : Number(args.bytes); }
+          const point = watchpoint({ address, size, access: 'write' });
+          this.response(request, { dataId: memoryDataId(point.address, point.size), description: `${hex(point.address)} · ${point.size} 字节`, accessTypes: ['read', 'write', 'readWrite'], canPersist: true });
+        } catch (error) { this.response(request, { dataId: null, description: error instanceof Error ? error.message : String(error) }); }
+        return;
+      }
+      case 'setDataBreakpoints': {
+        const runtime = this.breakpointRuntime();
+        this.response(request, { breakpoints: await this.machine.setNativeWatches(args.breakpoints ?? [], points => runtime.setDataBreakpoints(points)) }); return;
+      }
+      case 'qemuAsm.watchpoints': {
+        const runtime = this.requireStopped();
+        this.response(request, { ...await this.machine.changeWatch(args, points => runtime.setDataBreakpoints(points)), ...(this.lastDataHit ? { lastHit: this.lastDataHit } : {}) }); return;
+      }
       case 'qemuAsm.inspectMemory':
         this.response(request, await inspectMemory(this.requireStopped(), args)); return;
       case 'qemuAsm.inspectDescriptors':
@@ -337,6 +386,14 @@ export class AssemblyDebugAdapter implements DebugAdapter {
       default: throw new Error(`当前调试器不支持请求：${request.command}`);
     }
   }
+  private executionAddresses(instructions = this.machine.instructionAddresses()): number[] {
+    return [...new Set([...this.userAddresses, ...instructions, ...(this.temporary === undefined ? [] : [this.temporary])])];
+  }
+  private breakpointRuntime(): DebugRuntime {
+    this.trust();
+    if (!this.runtime || !['stopped', 'configuring'].includes(this.phase)) throw new Error('请先暂停程序，再修改断点');
+    return this.runtime;
+  }
   private async fileKey(file: string): Promise<string> {
     let canonical = path.normalize(file);
     try { canonical = await fs.realpath(file); } catch { /* Unknown source files remain unverified. */ }
@@ -348,7 +405,7 @@ export class AssemblyDebugAdapter implements DebugAdapter {
     const runtime = this.runtime; this.runtime = undefined;
     const display = this.display; this.display = undefined;
     await Promise.all([runtime?.dispose(), display?.dispose(), this.processes.stop()]);
-    this.temporary = undefined;
+    this.temporary = undefined; this.bootPending = false; this.lastDataHit = undefined;
   }
   private finish(): Promise<void> {
     if (this.finishing) return this.finishing;

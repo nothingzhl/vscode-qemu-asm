@@ -27,7 +27,7 @@ test('debug capabilities are explicit and unpaused refreshes expose no register 
 
 test('stale UI refreshes still reject an untrusted workspace',async()=>{
  const c=client({isTrusted:()=>false,getProject:async()=>{throw new Error('unused');}});
- for(const command of ['stackTrace','scopes','variables','evaluate','qemuAsm.inspectMemory','qemuAsm.inspectDescriptors']){
+ for(const command of ['stackTrace','scopes','variables','evaluate','qemuAsm.inspectMemory','qemuAsm.inspectDescriptors','disassemble','qemuAsm.disassemble','setInstructionBreakpoints','qemuAsm.instructionBreakpoints','dataBreakpointInfo','setDataBreakpoints','qemuAsm.watchpoints']){
   const response=await c.request(command);assert.equal(response.success,false);assert.match(response.message,/信任/);
  }
  await c.adapter.dispose();
@@ -38,7 +38,7 @@ test('inspector requests require an actual stopped CPU before reading memory or 
  let reads=0;
  c.adapter.runtime={registers:async()=>{reads++;throw new Error('must not read');},readMemory:async()=>{reads++;throw new Error('must not read');},dispose:async()=>{}};
  c.adapter.phase='running';
- for(const command of ['qemuAsm.inspectMemory','qemuAsm.inspectDescriptors']){
+ for(const command of ['qemuAsm.inspectMemory','qemuAsm.inspectDescriptors','disassemble','qemuAsm.disassemble','setInstructionBreakpoints','qemuAsm.instructionBreakpoints','dataBreakpointInfo','setDataBreakpoints','qemuAsm.watchpoints']){
   const response=await c.request(command,{address:0x8000,table:'gdt'});
   assert.equal(response.success,false);assert.match(response.message,/暂停/);
  }

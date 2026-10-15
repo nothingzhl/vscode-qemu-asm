@@ -9,7 +9,7 @@ function harness() {
   const debug = { activeDebugSession: undefined };
   for (const name of ['onDidChangeActiveDebugSession', 'onDidStartDebugSession', 'onDidTerminateDebugSession']) debug[name] = callback => { listeners[name] = callback; return { dispose() { delete listeners[name]; } }; };
   const uri = value => ({ toString: () => value });
-  const vscode = { debug, Uri: { joinPath: (root, ...parts) => uri([root.toString(), ...parts].join('/')) } };
+  const vscode = { debug, workspace: { isTrusted: true }, Uri: { joinPath: (root, ...parts) => uri([root.toString(), ...parts].join('/')) } };
   const exports = {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../dist/inspector/provider.js'), 'utf8'), { exports, require: name => name === 'vscode' ? vscode : name === './model' ? require('../dist/inspector/model') : require(name) });
   const provider = new exports.InspectorProvider({ extensionUri: uri('/extension') });
@@ -21,7 +21,7 @@ function harness() {
   } });
   const activate = session => { debug.activeDebugSession = session; listeners.onDidChangeActiveDebugSession(session); };
   const open = () => { provider.resolveWebviewView(view); view.receive({ type: 'ready' }); };
-  return { provider, view, posts, requests, session, activate, open, latest: () => posts.filter(post => post.type === 'snapshot').at(-1) };
+  return { provider, view, posts, requests, session, activate, open, vscode, latest: () => posts.filter(post => post.type === 'snapshot').at(-1) };
 }
 test('provider opens an already-stopped tracked session and renders real customRequest results', async () => {
   const h = harness(); const session = h.session(); const tracker = h.provider.createDebugAdapterTracker(session);
@@ -61,4 +61,38 @@ test('provider rejects expression addresses and generated HTML enforces external
   assert.match(h.view.webview.html, /default-src 'none'/); assert.match(h.view.webview.html, /script-src 'nonce-[^']+'/);
   assert.match(h.view.webview.html, /localResourceRoots|inspector\.js/); assert.doesNotMatch(h.view.webview.html, /onclick=|eval\(|unsafe-inline/);
   h.provider.dispose();
+});
+
+test('provider rejects running or untrusted mutations and validates watchpoint ranges without narrowing valid unaligned addresses', async () => {
+  const h = harness(); const session = h.session(); const tracker = h.provider.createDebugAdapterTracker(session); h.open();
+  h.view.receive({ type: 'watchpoint', action: 'add', address: '0x100001', size: 4, access: 'write' }); assert.equal(h.requests.length, 0);
+  tracker.onDidSendMessage({ type: 'event', event: 'stopped' }); await turn();
+  const changes = []; h.provider.model.changeWatchpoint = (...args) => { changes.push(args); return Promise.resolve(); };
+  h.vscode.workspace.isTrusted = false; h.view.receive({ generation: h.latest().generation, sessionId: session.id, type: 'watchpoint', action: 'add', address: '0x100001', size: 4, access: 'write' });
+  assert.equal(changes.length, 0); assert.match(h.posts.at(-1).message, /受信任/);
+  h.vscode.workspace.isTrusted = true; h.view.receive({ generation: h.latest().generation, sessionId: session.id, type: 'watchpoint', action: 'add', address: '0xFFFFFFFF', size: 4, access: 'write' }); assert.equal(changes.length, 0);
+  h.view.receive({ generation: h.latest().generation, sessionId: session.id, type: 'watchpoint', action: 'add', address: '0x100001', size: 4, access: 'write' });
+  assert.equal(changes.length, 1); assert.equal(changes[0][1].address, 0x100001);
+  h.provider.dispose();
+});
+test('provider keeps disassembly address jumps separate from memory and ignores next-page overflow', async () => {
+  const h = harness(); h.open();
+  h.view.receive({ type: 'disassemblyAddress', address: '0x100000' });
+  assert.equal(h.provider.model.snapshot.form.disassemblyAddress, 0x100000); assert.equal(h.provider.model.snapshot.form.disassemblyFollow, false);
+  assert.equal(h.provider.model.snapshot.form.address, 0x7c00);
+  h.view.receive({ type: 'disassemblyAddress', address: '[eax]' }); assert.equal(h.posts.at(-1).type, 'notice');
+  h.view.receive({ type: 'navigate', direction: 1 }); assert.equal(h.provider.model.snapshot.form.address, 0x7d00);
+  assert.match(h.view.webview.html, /id="tab-disassembly"/); assert.match(h.view.webview.html, /id="tab-watchpoints"/); h.provider.dispose();
+});
+test('mutations from an older stopped snapshot cannot affect another session or stop generation', async () => {
+  const h = harness(); const first = h.session(); const tracker = h.provider.createDebugAdapterTracker(first); h.open();
+  tracker.onDidSendMessage({ type: 'event', event: 'stopped' }); await turn();
+  const message = { type: 'instructionBreakpoint', address: 0x100000, enabled: true, generation: h.latest().generation, sessionId: first.id };
+  const changes = []; h.provider.model.changeInstructionBreakpoint = (...args) => { changes.push(args); return Promise.resolve(); };
+  tracker.onDidSendMessage({ type: 'event', event: 'continued' }); tracker.onDidSendMessage({ type: 'event', event: 'stopped' }); await turn();
+  h.view.receive(message); assert.equal(changes.length, 0);
+  const second = h.session('second'); h.activate(second); const otherTracker = h.provider.createDebugAdapterTracker(second);
+  otherTracker.onDidSendMessage({ type: 'event', event: 'stopped' }); await turn();
+  h.view.receive({ ...message, generation: h.latest().generation }); assert.equal(changes.length, 0);
+  h.view.receive({ ...message, generation: h.latest().generation, sessionId: second.id }); assert.equal(changes.length, 1); h.provider.dispose();
 });

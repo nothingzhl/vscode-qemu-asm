@@ -1,8 +1,8 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中调试 x86 引导与保护模式程序，查看内存、GDT/IDT、寄存器、栈和真实 QEMU 显示器。",
-  "version": "0.4.0",
+  "description": "在 VS Code 中调试 x86 引导与保护模式程序，支持反汇编、指令断点、内存数据断点与 QEMU 显示器。",
+  "version": "0.5.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -31,7 +31,10 @@
     "test:protected": "npm run compile && node scripts/protected-integration.cjs",
     "test:protected:ui": "npm run compile && node scripts/protected-ui-test.cjs",
     "test:inspection": "npm run compile && node scripts/inspection-integration.cjs",
-    "test:inspection:ui": "npm run compile && node scripts/inspection-ui-test.cjs"
+    "test:inspection:ui": "npm run compile && node scripts/inspection-ui-test.cjs",
+    "test:machine": "npm run compile && node scripts/watchpoint-runtime-integration.cjs && node scripts/machine-debug-integration.cjs",
+    "test:machine:ui": "npm run compile && node scripts/machine-ui-test.cjs",
+    "test:vsix:machine": "node scripts/vsix-machine-test.cjs"
   },
   "contributes": {
     "commands": [
@@ -71,6 +74,14 @@
         "command": "qemuAsm.showInspector",
         "title": "QEMU Assembly: 查看内存与描述符表",
         "icon": "$(inspect)"
+      },
+      {
+        "command": "qemuAsm.showDisassembly",
+        "title": "QEMU Assembly: 查看反汇编"
+      },
+      {
+        "command": "qemuAsm.showDataBreakpoints",
+        "title": "QEMU Assembly: 查看数据断点"
       }
     ],
     "configuration": {
@@ -166,7 +177,7 @@
       "panel": [
         {
           "id": "qemuAsmInspector",
-          "title": "QEMU 内存与描述符表",
+          "title": "QEMU 调试观察器",
           "icon": "media/inspector.svg"
         }
       ]
@@ -176,7 +187,7 @@
         {
           "type": "webview",
           "id": "qemuAsm.inspector",
-          "name": "内存与描述符表",
+          "name": "调试观察器",
           "contextualTitle": "QEMU Assembly"
         }
       ]
@@ -207,5 +218,8 @@
   "activationEvents": [
     "onDebugResolve:qemu-asm",
     "onDebugInitialConfigurations"
-  ]
+  ],
+  "dependencies": {
+    "iced-x86": "1.21.0"
+  }
 }
