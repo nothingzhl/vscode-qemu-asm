@@ -1,8 +1,8 @@
 {
   "name": "vscode-qemu-asm",
   "displayName": "QEMU Assembly Toolkit",
-  "description": "在 VS Code 中调试 x86 引导与保护模式内核，支持分页地址转换、反汇编、内存数据断点与 QEMU 显示器。",
-  "version": "0.6.0",
+  "description": "在 VS Code 中调试 x86 汇编与 C 内核，支持 ELF/DWARF 源码、变量、分页与 QEMU 显示器。",
+  "version": "0.7.0",
   "private": true,
   "publisher": "nothingzhl",
   "engines": {
@@ -38,7 +38,10 @@
     "test:paging": "npm run compile && node scripts/physical-memory-integration.cjs && node scripts/paging-integration.cjs",
     "test:paging:ui": "npm run compile && node scripts/paging-ui-test.cjs",
     "test:c-machine": "npm run compile && node scripts/c-machine-integration.cjs",
-    "test:vsix:paging": "node scripts/vsix-paging-test.cjs"
+    "test:vsix:paging": "node scripts/vsix-paging-test.cjs",
+    "test:c-source": "npm run compile && node scripts/c-source-integration.cjs",
+    "test:c-source:ui": "npm run compile && node scripts/c-source-ui-test.cjs",
+    "test:vsix:c-source": "node scripts/vsix-c-source-test.cjs"
   },
   "contributes": {
     "commands": [
@@ -121,6 +124,12 @@
           "default": [],
           "scope": "resource",
           "description": "附加参数数组，仅支持 -m、-cpu、-smp 及其值；例如 [\"-m\", \"32M\"]。"
+        },
+        "qemuAsm.gdbPath": {
+          "type": "string",
+          "default": "gdb",
+          "scope": "resource",
+          "description": "C/ELF 源码调试使用的 GDB 可执行文件；相对路径以所选工作区为基准。NASM 调试不需要 GDB。"
         }
       }
     },
@@ -138,6 +147,9 @@
     "breakpoints": [
       {
         "language": "qemu-asm"
+      },
+      {
+        "language": "c"
       }
     ],
     "debuggers": [
@@ -145,7 +157,8 @@
         "type": "qemu-asm",
         "label": "QEMU 16/32 位引导调试",
         "languages": [
-          "qemu-asm"
+          "qemu-asm",
+          "c"
         ],
         "configurationAttributes": {
           "launch": {
@@ -154,7 +167,7 @@
               "stopOnEntry": {
                 "type": "boolean",
                 "default": true,
-                "description": "引导到 0x7c00 后暂停；支持 NASM 实模式和非 PAE 的 32 位保护模式分页调试。"
+                "description": "暂停在入口：NASM 项目为 0x7c00；配置 debug.elf 的 C 项目为 debug.entry 或 ELF 入口。"
               }
             }
           }

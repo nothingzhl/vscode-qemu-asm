@@ -18,7 +18,7 @@ export type BreakpointOrigin = 'native' | 'custom' | 'both';
 export interface InstructionBreakpoint { address: number; verified: boolean; id?: number; message?: string; origin: BreakpointOrigin; }
 export type WatchAccess = 'write' | 'read' | 'readWrite';
 export interface Watchpoint { id: number; dataId: string; address: number; size: 1 | 2 | 4; access: WatchAccess; verified: boolean; message?: string; origin: BreakpointOrigin; }
-export interface WatchpointData { breakpoints: Watchpoint[]; lastHit?: { address: number; access: WatchAccess; ids: number[]; pc: number }; }
+export interface WatchpointData { breakpoints: Watchpoint[]; warnings?: string[]; lastHit?: { address: number; access: WatchAccess; ids: number[]; pc: number }; }
 export interface PageEntry {
   level: 'directory' | 'table'; index: number; address: number; raw: number; present: boolean; writable: boolean; user: boolean;
   writeThrough: boolean; cacheDisable: boolean; accessed: boolean; dirty?: boolean; pageSize?: boolean; global?: boolean; pat?: boolean;
@@ -108,6 +108,7 @@ function instructionBreakpoints(value: unknown): value is { breakpoints: Instruc
 }
 function watchpointData(value: unknown): value is WatchpointData {
   return object(value) && Array.isArray(value.breakpoints) && value.breakpoints.length <= 64
+    && (value.warnings === undefined || (Array.isArray(value.warnings) && value.warnings.length <= 8 && value.warnings.every(warning => typeof warning === 'string' && warning.length <= 1024)))
     && value.breakpoints.every(entry => object(entry) && Number.isSafeInteger(entry.id) && typeof entry.dataId === 'string' && uint32(entry.address)
       && [1, 2, 4].includes(entry.size as number) && ['write', 'read', 'readWrite'].includes(entry.access as string) && typeof entry.verified === 'boolean' && ['native', 'custom', 'both'].includes(entry.origin as string))
     && (value.lastHit === undefined || (object(value.lastHit) && uint32(value.lastHit.address) && uint32(value.lastHit.pc) && ['write', 'read', 'readWrite'].includes(value.lastHit.access as string) && Array.isArray(value.lastHit.ids) && value.lastHit.ids.every(Number.isSafeInteger)));

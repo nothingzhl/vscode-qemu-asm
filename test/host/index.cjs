@@ -123,6 +123,7 @@ async function resources() {
 }
 
 exports.run = async function() {
+  if (process.env.QEMU_ASM_HOST_PHASE === 'c-source') { await require('./c-source.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'paging') { await require('./paging.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'machine') { await require('./machine.cjs').run(); return; }
   if (process.env.QEMU_ASM_HOST_PHASE === 'inspection') { await require('./inspection.cjs').run(); return; }

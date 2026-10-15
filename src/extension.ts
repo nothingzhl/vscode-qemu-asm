@@ -3,12 +3,13 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { DisplayController } from './display/controller';
 import { AssemblyDebugAdapter } from './debug/adapter';
+import { CSourceDebugAdapter } from './debug/cAdapter';
 import { InspectorProvider } from './inspector/provider';
 import { build, createProject, execute, parseErrors, Processes, qemuArguments, resolveProject, Project } from './core';
 
 let processes: Processes | undefined;
 let displays: DisplayController | undefined;
-const debugAdapters = new Set<AssemblyDebugAdapter>();
+const debugAdapters = new Set<AssemblyDebugAdapter | CSourceDebugAdapter>();
 export function activate(context: vscode.ExtensionContext): void {
   const runner = processes = new Processes();
   const output = vscode.window.createOutputChannel('QEMU Assembly');
@@ -42,12 +43,12 @@ export function activate(context: vscode.ExtensionContext): void {
   async function project(readConfig = true, explicitFolder?: vscode.WorkspaceFolder): Promise<Project> {
     const selected = explicitFolder ?? await folder();
     const settings = vscode.workspace.getConfiguration('qemuAsm', selected.uri);
-    const base = resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), {}, { nasm: settings.get('nasmPath'), qemu: settings.get('qemuPath'), qemuArgs: settings.get('qemuArgs') });
+    const base = resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), {}, { nasm: settings.get('nasmPath'), qemu: settings.get('qemuPath'), gdb: settings.get('gdbPath'), qemuArgs: settings.get('qemuArgs') });
     if (!readConfig) return base;
     let data: unknown;
     try { data = JSON.parse(await fs.readFile(path.join(base.root, 'qemu-asm.json'), 'utf8')); }
     catch (error) { throw new Error(`无法读取 qemu-asm.json，请先创建项目。${String(error)}`); }
-    return resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), data, { nasm: settings.get('nasmPath'), qemu: settings.get('qemuPath'), qemuArgs: settings.get('qemuArgs') });
+    return resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), data, { nasm: settings.get('nasmPath'), qemu: settings.get('qemuPath'), gdb: settings.get('gdbPath'), qemuArgs: settings.get('qemuArgs') });
   }
   async function stop(): Promise<void> { generation++; await Promise.all([runner.stop(), display.stop(), ...[...debugAdapters].map(adapter => adapter.dispose())]); running = false; state('已停止'); }
   async function compile(p: Project, token: number): Promise<void> {
@@ -75,14 +76,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
   }
   register('checkEnvironment', async () => {
-    const p = await project(false);
+    let p = await project(false);
+    try { await fs.access(path.join(p.root, 'qemu-asm.json')); p = await project(); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
     let missing = false;
-    for (const [tool, args, setting] of [[p.nasm, ['-v'], 'nasmPath'], [p.qemu, ['--version'], 'qemuPath']] as const) {
+    const checks: [string, string[], string][] = [
+      ...(p.build ? [] : [[p.nasm, ['-v'], 'nasmPath'] as [string, string[], string]]),
+      [p.qemu, ['--version'], 'qemuPath'],
+      ...(p.debug ? [[p.debug.gdb, ['--version'], 'gdbPath'] as [string, string[], string]] : [])
+    ];
+    for (const [tool, args, setting] of checks) {
       output.appendLine(`检测工具：${tool}`);
       try { await execute(runner, tool, [...args], p.workspace, text => output.append(text)); }
       catch (error) { missing = true; output.appendLine(`缺失或不可用：${String(error)}。请配置 qemuAsm.${setting}（可执行文件路径，不含命令参数）。`); }
     }
-    void vscode.window.showInformationMessage(missing ? '环境检查发现缺失项，请查看 QEMU Assembly 日志。' : 'NASM 与 QEMU 环境检查通过。');
+    void vscode.window.showInformationMessage(missing ? '环境检查发现缺失项，请查看 QEMU Assembly 日志。' : '项目所需工具的环境检查通过。');
   });
   async function createExample(template: 'boot' | 'protected'): Promise<void> {
     const selected = await folder();
@@ -156,11 +164,17 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.debug.registerDebugAdapterDescriptorFactory('qemu-asm', {
-      createDebugAdapterDescriptor: session => {
+      createDebugAdapterDescriptor: async session => {
         trusted();
+        const token = generation;
         const selected = session.workspaceFolder ?? vscode.workspace.workspaceFolders?.find(item => item.uri.toString() === session.configuration.__workspace);
         if (!selected) throw new Error('调试会话缺少所选工作区');
-        const adapter = new AssemblyDebugAdapter({ getProject: () => project(true, selected), isTrusted: () => vscode.workspace.isTrusted, log: text => output.append(text), createDisplay: async () => {
+        const configured = await project(true, selected);
+        trusted();
+        if (token !== generation) throw new Error('调试启动已取消');
+        if (configured.build && !configured.debug) throw new Error('外部构建的源码调试需要在 qemu-asm.json 中配置 debug.elf。');
+        const Adapter = configured.debug ? CSourceDebugAdapter : AssemblyDebugAdapter;
+        const adapter = new Adapter({ getProject: () => project(true, selected), isTrusted: () => vscode.workspace.isTrusted, log: text => output.append(text), createDisplay: async () => {
           const screen = await display.create();
           return { args: screen.args, connect: () => display.connect(screen), dispose: () => display.stop(screen) };
         } });
