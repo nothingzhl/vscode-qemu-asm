@@ -120,6 +120,36 @@ test('continued/stopped invalidates all previous frame and variable handles', as
   assert.equal((await c.request('evaluate', { frameId: frames[0].id, expression: 'local' })).success, false);
   const nextFrames = (await c.request('stackTrace')).body.stackFrames; assert.notEqual(nextFrames[0].id, frames[0].id);
 });
+test('delayed native scopes and evaluations after F11 never reuse an expired frame or notify the user', async t => {
+  const c = await configured(t), previousFrames = (await c.request('stackTrace')).body.stackFrames;
+  await c.request('scopes', { frameId: previousFrames[1].id });
+  assert.equal((await c.request('stepIn')).success, true);
+  assert(c.runtime.commands.includes('-exec-step'));
+  c.runtime.stop({ reason: 'end-stepping-range', frame: { addr: '0xc0000024', func: 'nested', line: '9' } }); await c.settled();
+
+  const before = [...c.runtime.commands], nextHandle = c.adapter.handleSerial;
+  for (const frame of previousFrames) {
+    const scopes = await c.request('scopes', { frameId: frame.id });
+    assert.equal(scopes.success, true); assert.deepEqual(scopes.body.scopes, []);
+  }
+  for (const context of ['hover', 'watch', 'variables', 'repl', undefined]) {
+    const evaluation = await c.request('evaluate', { frameId: previousFrames[1].id, expression: 'local', ...(context ? { context } : {}) });
+    assert.equal(evaluation.success, false); assert.match(evaluation.message, /调用栈帧已过期/);
+    assert.equal(evaluation.body.error.showUser, false);
+  }
+  assert.deepEqual(c.runtime.commands, before, 'expired reads must not request new frames or create GDB variables');
+  assert.equal(c.adapter.handleSerial, nextHandle); assert.equal(c.adapter.handles.size, 0);
+
+  const currentFrames = (await c.request('stackTrace')).body.stackFrames;
+  assert.notEqual(currentFrames[0].id, previousFrames[0].id);
+  const currentScopes = (await c.request('scopes', { frameId: currentFrames[0].id })).body.scopes;
+  assert(currentScopes.some(scope => /寄存器/.test(scope.name)));
+  assert.equal((await c.request('evaluate', { frameId: currentFrames[0].id, expression: 'local', context: 'watch' })).body.result, '42');
+  assert.equal((await c.request('evaluate', { frameId: currentFrames[1].id, expression: 'local', context: 'repl' })).body.result, '99');
+  const reads = c.runtime.commands.length;
+  assert.deepEqual((await c.request('scopes', { frameId: previousFrames[0].id })).body.scopes, []);
+  assert.equal(c.runtime.commands.length, reads, 'new cached frames must not make an old ID valid again');
+});
 test('native and panel instruction ownership share installation and preserve remaining owner', async t => {
   const c = await configured(t), address = 0xc0000020;
   const native = (await c.request('setInstructionBreakpoints', { breakpoints: [{ instructionReference: '0xc0000020' }] })).body.breakpoints[0];
