@@ -1,21 +1,33 @@
-import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import type { VirtualMachine } from '../../ports/virtualMachine';
-import { cpuMode, instructionAddress } from '../../domain/x86/state';
+import { EventEmitter } from 'node:events';
 import { monitorRegisters } from '../../backends/qemu/monitor';
-import { Project } from '../../project/model';
-import { CapabilityLedger } from '../../dependencies/capabilities';
-import { localHost } from '../../platform/host';
 import { decodeRegisters, RegisterLayout, registerLayout, RspClient } from '../../debug/rsp';
+import { CapabilityLedger } from '../../dependencies/capabilities';
+import { cpuMode, instructionAddress } from '../../domain/x86/state';
+import { localHost } from '../../platform/host';
+import type { VirtualMachine } from '../../ports/virtualMachine';
+import { Project } from '../../project/model';
+import { RspBreakpoints } from './rspBreakpoints';
+import { RspMemory } from './rspMemory';
+import { stoppedEvent } from './rspStopped';
+import { readTarget } from './rspTarget';
+import { expectOK } from './rspValidation';
+export { stoppedEvent } from './rspStopped';
 
-import { AssemblyBackend, DataWatchpoint, StoppedEvent, WatchAccess } from '../../ports/machine';
+import { AssemblyBackend, DataWatchpoint, StoppedEvent } from '../../ports/machine';
 /** 只负责一个单 CPU 的 QEMU 进程；源码映射由 DAP 适配器负责。 */
 export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
   readonly capabilities: CapabilityLedger;
   private client?: RspClient;
   private layout: RegisterLayout[] = [];
-  private breakpoints = new Set<number>();
-  private dataBreakpoints = new Map<string, DataWatchpoint>();
+  private readonly bindings = new RspBreakpoints(
+    () => this.requireStopped(),
+    async (error) => {
+      this.finish(error);
+      await this.dispose();
+    }
+  );
+  private readonly memory: RspMemory;
   private running = false;
   private stopping = false;
   private ended = false;
@@ -29,17 +41,28 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
   private stopPackets: Promise<void> = Promise.resolve();
   private disposal?: Promise<void>;
 
-  constructor(private readonly project: Project, private readonly log: (text: string) => void, private readonly machine: VirtualMachine) {
+  constructor(
+    project: Project,
+    private readonly machine: VirtualMachine
+  ) {
     super();
     const tools: Record<string, string> = {};
-    for (const [name, requested] of [['nasm', project.nasm], ['qemu', project.qemu]]) {
+    for (const [name, requested] of [
+      ['nasm', project.nasm],
+      ['qemu', project.qemu]
+    ]) {
       if (typeof requested !== 'string') continue;
       tools[name] = requested;
     }
     this.capabilities = new CapabilityLedger({
-      sessionId: randomUUID(), targetId: project.image, backend: 'nasm-rsp',
-      host: localHost.identity, tools, machine: project.qemuArgs,
+      sessionId: randomUUID(),
+      targetId: project.image,
+      backend: 'nasm-rsp',
+      host: localHost.identity,
+      tools,
+      machine: project.qemuArgs
     });
+    this.memory = new RspMemory(() => this.requireStopped(), this.capabilities);
   }
 
   async launch(): Promise<void> {
@@ -51,124 +74,113 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
       if (!endpoint) throw new Error('虚拟机未提供调试连接端点');
       this.capabilities.bindTools({ qemu: run.executable });
       let processError: Error | undefined;
-      void run.exited.then(() => {
-        processError = new Error('QEMU 已退出');
-        if (!this.stopping) { this.finish(processError); void this.dispose(); }
-      }, error => {
-        processError = error as Error;
-        if (!this.stopping) { this.finish(processError); void this.dispose(); }
-      });
+      void run.exited.then(
+        () => {
+          processError = new Error('QEMU 已退出');
+          if (!this.stopping) {
+            this.finish(processError);
+            void this.dispose();
+          }
+        },
+        (error) => {
+          processError = error as Error;
+          if (!this.stopping) {
+            this.finish(processError);
+            void this.dispose();
+          }
+        }
+      );
       const deadline = Date.now() + 8000;
       while (!this.client) {
         if (this.stopping || processError) throw processError ?? new Error('调试启动已取消');
-        try { this.client = await RspClient.connect(endpoint.port, endpoint.host, 400); }
-        catch (error) {
+        try {
+          this.client = await RspClient.connect(endpoint.port, endpoint.host, 400);
+        } catch (error) {
           if (Date.now() >= deadline) throw new Error(`无法连接 QEMU 调试接口：${(error as Error).message}`);
-          await new Promise(resolve => setTimeout(resolve, 60));
+          await new Promise((resolve) => setTimeout(resolve, 60));
         }
       }
-      if (this.stopping) { this.client.close(); throw new Error('调试启动已取消'); }
+      if (this.stopping) {
+        this.client.close();
+        throw new Error('调试启动已取消');
+      }
       this.client.on('disconnect', (error: Error) => {
-        if (!this.stopping) { this.finish(error); void this.dispose(); }
+        if (!this.stopping) {
+          this.finish(error);
+          void this.dispose();
+        }
       });
-      this.client.on('exit', () => { this.finish(); void this.dispose(); });
+      this.client.on('exit', () => {
+        this.finish();
+        void this.dispose();
+      });
       this.client.on('stop', (packet: string) => {
         this.physicalStop = true;
-        this.stopPackets = this.stopPackets.then(() => this.handleStop(packet)).catch(error => {
-          this.finish(error as Error);
-          void this.dispose();
-        });
+        this.stopPackets = this.stopPackets
+          .then(() => this.handleStop(packet))
+          .catch((error) => {
+            this.finish(error as Error);
+            void this.dispose();
+          });
       });
       await this.client.command('qSupported:multiprocess+;qXfer:features:read+;xmlRegisters=i386');
-      const target = await this.readTarget('target.xml');
+      const target = await readTarget(this.client, 'target.xml');
       try {
-        if (!/<architecture>\s*i386\s*<\/architecture>/.test(target)) throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局，不支持 64 位 CPU');
+        if (!/<architecture>\s*i386\s*<\/architecture>/.test(target))
+          throw new Error('当前调试仅支持 QEMU i386 32 位寄存器布局，不支持 64 位 CPU');
         this.layout = registerLayout(target);
-        const names = new Set(this.layout.map(register => register.name));
-        for (const name of ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi', 'eip', 'eflags', 'cs', 'ss', 'ds', 'es', 'fs', 'gs']) {
+        const names = new Set(this.layout.map((register) => register.name));
+        for (const name of [
+          'eax',
+          'ecx',
+          'edx',
+          'ebx',
+          'esp',
+          'ebp',
+          'esi',
+          'edi',
+          'eip',
+          'eflags',
+          'cs',
+          'ss',
+          'ds',
+          'es',
+          'fs',
+          'gs'
+        ]) {
           if (!names.has(name)) throw new Error(`QEMU 寄存器描述缺少 ${name}`);
         }
       } catch (error) {
-        this.capabilities.record('qemu.rspTarget', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
+        this.capabilities.record('qemu.rspTarget', {
+          state: 'unsupported',
+          evidence: 'protocol',
+          reason: (error as Error).message
+        });
         throw error;
       }
       this.capabilities.record('qemu.rspTarget', {
-        state: 'supported', evidence: 'protocol',
-        reason: '当前 QEMU RSP 通道的 target XML 已确认 i386 架构与必需寄存器布局',
+        state: 'supported',
+        evidence: 'protocol',
+        reason: '当前 QEMU RSP 通道的 target XML 已确认 i386 架构与必需寄存器布局'
       });
       const stopped = await this.client.command('?');
       if (!/^[TS][0-9a-f]{2}/i.test(stopped)) throw new Error('QEMU 没有在启动时暂停');
       await this.registers();
       this.emit('stopped', { reason: 'entry' } satisfies StoppedEvent);
-    } catch (error) { this.finish(error as Error); await this.dispose(); throw error; }
-  }
-
-  async setBreakpoints(addresses: number[]): Promise<void> {
-    const client = this.requireStopped();
-    for (const address of addresses) this.validateAddress(address);
-    const desired = new Set(addresses);
-    const previous = new Set(this.breakpoints);
-    const update = async (target: Set<number>) => {
-      for (const address of this.breakpoints) {
-        if (target.has(address)) continue;
-        this.expectOK(await client.command(`z1,${address.toString(16)},1`), '移除硬件断点');
-        this.breakpoints.delete(address);
-      }
-      for (const address of target) {
-        if (this.breakpoints.has(address)) continue;
-        this.expectOK(await client.command(`Z1,${address.toString(16)},1`), '设置硬件断点');
-        this.breakpoints.add(address);
-      }
-    };
-    try { await update(desired); }
-    catch (error) {
-      try { await update(previous); }
-      catch (rollback) {
-        const failure = new Error(`硬件断点设置失败且无法恢复旧设置：${(rollback as Error).message}`);
-        this.finish(failure);
-        await this.dispose();
-        throw failure;
-      }
+    } catch (error) {
+      this.finish(error as Error);
+      await this.dispose();
       throw error;
     }
+  }
+
+  setBreakpoints(addresses: number[]): Promise<void> {
+    return this.bindings.setBreakpoints(addresses);
   }
 
   /** 整批替换数据断点。失败时恢复旧集合，不把半完成的设置留给适配器。 */
-  async setDataBreakpoints(points: DataWatchpoint[]): Promise<void> {
-    const client = this.requireStopped();
-    if (points.length > 16) throw new Error('最多同时设置 16 个数据断点');
-    const desired = new Map<string, DataWatchpoint>();
-    for (const point of points) {
-      this.validateAddress(point.address);
-      if (![1, 2, 4].includes(point.size) || point.address + point.size > 0x100000000) throw new Error('数据断点长度必须是 1、2 或 4 字节且地址不能溢出');
-      if (!['read', 'write', 'readWrite'].includes(point.access)) throw new Error('数据断点访问类型必须是 read、write 或 readWrite');
-      const copy = { ...point };
-      desired.set(watchKey(copy), copy);
-    }
-    const previous = new Map(this.dataBreakpoints);
-    const update = async (target: Map<string, DataWatchpoint>) => {
-      for (const [key, point] of this.dataBreakpoints) {
-        if (target.has(key)) continue;
-        this.expectOK(await client.command(watchCommand(point, false)), '移除数据断点');
-        this.dataBreakpoints.delete(key);
-      }
-      for (const [key, point] of target) {
-        if (this.dataBreakpoints.has(key)) continue;
-        this.expectOK(await client.command(watchCommand(point, true)), '设置数据断点');
-        this.dataBreakpoints.set(key, point);
-      }
-    };
-    try { await update(desired); }
-    catch (error) {
-      try { await update(previous); }
-      catch (rollback) {
-        const failure = new Error(`数据断点设置失败且无法恢复旧设置：${(rollback as Error).message}`);
-        this.finish(failure);
-        await this.dispose();
-        throw failure;
-      }
-      throw error;
-    }
+  setDataBreakpoints(points: DataWatchpoint[]): Promise<void> {
+    return this.bindings.setDataBreakpoints(points);
   }
 
   async resume(step = false): Promise<void> {
@@ -179,15 +191,19 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
     this.steppedWatch = false;
     this.pauseRequested = false;
     this.nextStop = step ? 'step' : 'breakpoint';
-    if (this.breakpoints.has(address)) {
+    if (this.bindings.breakpoints.has(address)) {
       // QEMU 的 Z1 在 c 后会原地再次触发，先临时移除并完成一条指令。
-      this.expectOK(await client.command(`z1,${address.toString(16)},1`), '临时移除硬件断点');
+      expectOK(await client.command(`z1,${address.toString(16)},1`), '临时移除硬件断点');
       this.breakpointStep = { address, step, pause: false, awaiting: true };
     }
     this.running = true;
     this.physicalStop = false;
-    try { await client.resume(this.breakpointStep ? true : step); }
-    catch (error) { this.running = false; throw error; }
+    try {
+      await client.resume(this.breakpointStep ? true : step);
+    } catch (error) {
+      this.running = false;
+      throw error;
+    }
   }
 
   async pause(): Promise<void> {
@@ -196,9 +212,19 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
     this.pauseRequested = true;
     if (this.breakpointStep) this.breakpointStep.pause = true;
     await new Promise<void>((resolve, reject) => {
-      const cleanup = () => { clearTimeout(timer); this.off('stopped', stopped); this.off('terminated', terminated); };
-      const stopped = () => { cleanup(); resolve(); };
-      const terminated = () => { cleanup(); reject(new Error('暂停前 QEMU 已退出')); };
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.off('stopped', stopped);
+        this.off('terminated', terminated);
+      };
+      const stopped = () => {
+        cleanup();
+        resolve();
+      };
+      const terminated = () => {
+        cleanup();
+        reject(new Error('暂停前 QEMU 已退出'));
+      };
       const timer = setTimeout(() => {
         cleanup();
         const error = new Error('等待 QEMU 暂停超时');
@@ -210,9 +236,15 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
       this.once('terminated', terminated);
       try {
         if (!this.physicalStop && (!this.breakpointStep || this.breakpointStep.awaiting)) {
-          void Promise.resolve(client.interrupt()).catch(error => { cleanup(); reject(error); });
+          void Promise.resolve(client.interrupt()).catch((error) => {
+            cleanup();
+            reject(error);
+          });
         }
-      } catch (error) { cleanup(); reject(error); }
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
     });
   }
 
@@ -227,77 +259,29 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
       Object.assign(registers, monitorRegisters(monitor));
       const mode = cpuMode(registers);
       this.capabilities.record('qemu.segmentRegisters', {
-        state: 'supported', evidence: 'protocol', reason: '当前 RSP monitor 的 CR0 与段缓存已解析并通过 CPU 模式校验',
-        details: { mode },
+        state: 'supported',
+        evidence: 'protocol',
+        reason: '当前 RSP monitor 的 CR0 与段缓存已解析并通过 CPU 模式校验',
+        details: { mode }
       });
     } catch (error) {
       this.capabilities.record('qemu.segmentRegisters', {
-        state: 'unsupported', evidence: 'protocol', reason: (error as Error).message,
+        state: 'unsupported',
+        evidence: 'protocol',
+        reason: (error as Error).message
       });
       throw error;
     }
     return registers;
   }
 
-  async readMemory(address: number, count: number): Promise<Buffer> {
-    const client = this.requireStopped();
-    this.validateMemoryRange(address, count);
-    return this.readMemoryChunks(payload => client.command(payload), address, count);
+  readMemory(address: number, count: number): Promise<Buffer> {
+    return this.memory.readMemory(address, count);
   }
 
   /** QEMU 的 m 包默认读取线性地址；页表必须在独占事务中显式切换成物理地址。 */
-  async readPhysicalMemory(address: number, count: number): Promise<Buffer> {
-    const client = this.requireStopped();
-    this.validateMemoryRange(address, count);
-    if (!count) return Buffer.alloc(0);
-    return client.transaction(async command => {
-      const mode = await command('qqemu.PhyMemMode');
-      if (mode !== '0' && mode !== '1') {
-        const error = new Error('当前 QEMU 不支持物理内存读取（qqemu.PhyMemMode），请升级 QEMU');
-        this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: error.message });
-        throw error;
-      }
-      // 从发送切换请求开始就承担恢复责任，即使它返回错误也不能假定模式未改变。
-      let result: Buffer;
-      try {
-        try { this.expectOK(await command('Qqemu.PhyMemMode:1'), '切换物理内存读取模式'); }
-        catch (error) {
-          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: (error as Error).message });
-          throw error;
-        }
-        result = await this.readMemoryChunks(command, address, count);
-      } finally {
-        try { this.expectOK(await command('Qqemu.PhyMemMode:0'), '恢复虚拟内存读取模式'); }
-        catch (error) {
-          this.capabilities.record('qemu.physicalMemory', { state: 'unsupported', evidence: 'protocol', reason: `无法恢复虚拟地址模式：${(error as Error).message}` });
-          // 不能让后续反汇编、栈或断点请求在未知地址模式下继续执行。
-          client.close();
-          throw new Error(`物理内存读取后无法恢复虚拟地址模式，调试会话已关闭：${(error as Error).message}`);
-        }
-      }
-      this.capabilities.record('qemu.physicalMemory', {
-        state: 'supported', evidence: 'protocol', reason: '当前 RSP 通道已完成非零物理内存读取并恢复虚拟地址模式',
-        details: { bytesRead: result.length },
-      });
-      return result;
-    });
-  }
-
-  private validateMemoryRange(address: number, count: number): void {
-    this.validateAddress(address);
-    if (!Number.isSafeInteger(count) || count < 0 || count > 65536 || address + count > 0x100000000) throw new Error('内存读取长度必须在 0 到 65536 之间且地址不能溢出');
-  }
-
-  private async readMemoryChunks(command: (payload: string) => Promise<string>, address: number, count: number): Promise<Buffer> {
-    if (!count) return Buffer.alloc(0);
-    const chunks: Buffer[] = [];
-    for (let offset = 0; offset < count; offset += 512) {
-      const size = Math.min(512, count - offset);
-      const response = await command(`m${(address + offset).toString(16)},${size.toString(16)}`);
-      if (!/^(?:[0-9a-f]{2})+$/i.test(response) || response.length !== size * 2) throw new Error('QEMU 返回不完整的内存数据');
-      chunks.push(Buffer.from(response, 'hex'));
-    }
-    return Buffer.concat(chunks);
+  readPhysicalMemory(address: number, count: number): Promise<Buffer> {
+    return this.memory.readPhysicalMemory(address, count);
   }
 
   async dispose(): Promise<void> {
@@ -323,11 +307,20 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
     this.watchTrapCheck = undefined;
     // TCG 的单步若先命中 watch，下一次 resume 可能先交付残留的单步 trap。
     // 只忽略一次完全无寄存器进展的普通 SIGTRAP；LOOP/REP 的真实单步仍可见。
-    if (check && event.signal === 5 && event.reason !== 'data breakpoint' && !this.pauseRequested && !this.breakpointStep?.pause) {
+    if (
+      check &&
+      event.signal === 5 &&
+      event.reason !== 'data breakpoint' &&
+      !this.pauseRequested &&
+      !this.breakpointStep?.pause
+    ) {
       const current = await this.readRegisters(this.requireClient());
-      if (Object.keys(check.registers).every(name => current[name] === check.registers[name]) &&
-          Object.keys(current).every(name => current[name] === check.registers[name]) &&
-          !this.pauseRequested && !this.breakpointStep?.pause) {
+      if (
+        Object.keys(check.registers).every((name) => current[name] === check.registers[name]) &&
+        Object.keys(current).every((name) => current[name] === check.registers[name]) &&
+        !this.pauseRequested &&
+        !this.breakpointStep?.pause
+      ) {
         const internal = this.breakpointStep;
         if (internal) internal.awaiting = true;
         this.physicalStop = false;
@@ -342,16 +335,20 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
       return;
     }
     this.running = false;
-    if (event.reason !== 'data breakpoint' && event.signal === 5 && this.pauseRequested) event.reason = 'pause';
+    if (event.reason !== 'data breakpoint' && event.signal === 5 && this.pauseRequested)
+      event.reason = 'pause';
     this.pauseRequested = false;
     if (event.reason === 'data breakpoint' && this.nextStop === 'step') this.steppedWatch = true;
     this.emit('stopped', event);
   }
 
-  private async afterBreakpointStep(packet: string, internal: { address: number; step: boolean; pause: boolean }): Promise<void> {
+  private async afterBreakpointStep(
+    packet: string,
+    internal: { address: number; step: boolean; pause: boolean }
+  ): Promise<void> {
     if (this.stopping) return;
     const client = this.requireClient();
-    this.expectOK(await client.command(`Z1,${internal.address.toString(16)},1`), '恢复硬件断点');
+    expectOK(await client.command(`Z1,${internal.address.toString(16)},1`), '恢复硬件断点');
     if (this.stopping) return;
     this.breakpointStep = undefined;
     const event = stoppedEvent(packet, 'step');
@@ -378,53 +375,4 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
     if (this.running) throw new Error('请先暂停 CPU，再读取寄存器、内存或修改断点');
     return client;
   }
-
-  private validateAddress(address: number): void {
-    if (!Number.isSafeInteger(address) || address < 0 || address > 0xffffffff) throw new Error('调试地址必须是有效的 32 位无符号整数');
-  }
-
-  private expectOK(response: string, operation: string): void {
-    if (response !== 'OK') throw new Error(`QEMU 不支持${operation}：${response || '空回复'}`);
-  }
-
-  private async readTarget(annex: string, seen = new Set<string>()): Promise<string> {
-    if (!/^[\w.-]+$/.test(annex) || seen.has(annex) || seen.size >= 20) throw new Error('QEMU target XML 引用无效');
-    seen.add(annex);
-    let result = '';
-    while (true) {
-      const response = await this.requireClient().command(`qXfer:features:read:${annex}:${Buffer.byteLength(result).toString(16)},1000`);
-      if (!/^[ml]/.test(response)) throw new Error('QEMU 不支持 target XML，无法安全解析寄存器');
-      result += response.slice(1);
-      if (result.length > 1024 * 1024) throw new Error('QEMU target XML 过大');
-      if (response[0] === 'l') break;
-      if (response.length === 1) throw new Error('QEMU target XML 读取没有进展');
-    }
-    for (const match of [...result.matchAll(/<xi:include\s+href=["']([^"']+)["'][^>]*\/>/g)]) {
-      result = result.replace(match[0], await this.readTarget(match[1], seen));
-    }
-    return result;
-  }
 }
-
-function watchKey(point: DataWatchpoint): string { return `${point.access}:${point.address}:${point.size}`; }
-function watchCommand(point: DataWatchpoint, insert: boolean): string {
-  const type = { write: 2, read: 3, readWrite: 4 }[point.access];
-  return `${insert ? 'Z' : 'z'}${type},${point.address.toString(16)},${point.size.toString(16)}`;
-}
-
-/** 监视点字段优先于单步/暂停意图，避免把真实内存访问误当成内部停止吞掉。 */
-export function stoppedEvent(packet: string, expected: StoppedEvent['reason']): StoppedEvent {
-  const signal = parseInt(packet.slice(1, 3), 16);
-  const match = /(?:^T[0-9a-f]{2}|;)(watch|rwatch|awatch):([0-9a-f]+);/i.exec(packet);
-  if (match) {
-    const address = parseInt(match[2], 16);
-    if (!Number.isSafeInteger(address) || address < 0 || address > 0xffffffff) throw new Error('QEMU 返回无效的数据断点地址');
-    const access: Record<string, WatchAccess> = { watch: 'write', rwatch: 'read', awatch: 'readWrite' };
-    return { reason: 'data breakpoint', signal, dataAddress: address, dataAccess: access[match[1].toLowerCase()] };
-  }
-  return { reason: signal === 5 ? expected : signal === 2 ? 'pause' : 'exception', signal };
-}
-
-export { realModeAddress, cpuMode, instructionAddress, stackWidth, stackAddress, validateRealModeRegisters } from '../../domain/x86/state';
-export type { CpuMode } from '../../domain/x86/state';
-export { monitorRegisters } from '../../backends/qemu/monitor';

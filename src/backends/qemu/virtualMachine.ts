@@ -1,7 +1,7 @@
-import type { Project } from '../../project/model';
-import type { MachineRun, MachineStartOptions, VirtualMachine } from '../../ports/virtualMachine';
-import { Processes } from '../../platform/processes';
 import { freePort } from '../../platform/ports';
+import { Processes } from '../../platform/processes';
+import type { MachineRun, MachineStartOptions, VirtualMachine } from '../../ports/virtualMachine';
+import type { Project } from '../../project/model';
 import { qemuArguments } from './arguments';
 
 /** QEMU command-line syntax and process ownership stop at this boundary. */
@@ -13,7 +13,7 @@ export class QemuVirtualMachine implements VirtualMachine {
     private readonly project: Project,
     private readonly processes: Processes,
     private readonly log: (text: string) => void,
-    private readonly attachments: readonly string[] = [],
+    private readonly attachments: readonly string[] = []
   ) {}
 
   async start(options: MachineStartOptions = {}): Promise<MachineRun> {
@@ -33,7 +33,10 @@ export class QemuVirtualMachine implements VirtualMachine {
     if (endpoint) args.push('-gdb', `tcp:${endpoint.host}:${endpoint.port}`);
     const run = this.processes.start(this.project.qemu, args, this.project.root, this.log);
     await run.ready;
-    if (this.disposed) { await this.processes.dispose(); throw new Error('虚拟机启动已取消'); }
+    if (this.disposed) {
+      await this.processes.dispose();
+      throw new Error('虚拟机启动已取消');
+    }
     return { debugEndpoint: endpoint, executable: run.tool.executable!, exited: run.done };
   }
 

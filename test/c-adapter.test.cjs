@@ -25,7 +25,7 @@ function client(t, options = {}) {
         adapter.handleMessage({ type: 'request', seq, command, arguments: args });
       });
     },
-    async settled() { await new Promise(resolve => setImmediate(resolve)); await adapter.queue; }
+    async settled() { await new Promise(resolve => setImmediate(resolve)); await adapter.channel.queue; }
   };
 }
 class ControlledGdb extends EventEmitter {
@@ -127,7 +127,7 @@ test('delayed native scopes and evaluations after F11 never reuse an expired fra
   assert(c.runtime.commands.includes('-exec-step'));
   c.runtime.stop({ reason: 'end-stepping-range', frame: { addr: '0xc0000024', func: 'nested', line: '9' } }); await c.settled();
 
-  const before = [...c.runtime.commands], nextHandle = c.adapter.handleSerial;
+  const before = [...c.runtime.commands], nextHandle = c.adapter.values.handleSerial;
   for (const frame of previousFrames) {
     const scopes = await c.request('scopes', { frameId: frame.id });
     assert.equal(scopes.success, true); assert.deepEqual(scopes.body.scopes, []);
@@ -138,7 +138,7 @@ test('delayed native scopes and evaluations after F11 never reuse an expired fra
     assert.equal(evaluation.body.error.showUser, false);
   }
   assert.deepEqual(c.runtime.commands, before, 'expired reads must not request new frames or create GDB variables');
-  assert.equal(c.adapter.handleSerial, nextHandle); assert.equal(c.adapter.handles.size, 0);
+  assert.equal(c.adapter.values.handleSerial, nextHandle); assert.equal(c.adapter.values.handles.size, 0);
 
   const currentFrames = (await c.request('stackTrace')).body.stackFrames;
   assert.notEqual(currentFrames[0].id, previousFrames[0].id);

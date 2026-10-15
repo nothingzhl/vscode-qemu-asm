@@ -11,7 +11,7 @@ export class DebugRuntime extends QemuRspBackend {
   readonly processes: Processes;
   constructor(project: Project, log: (text: string) => void, args: readonly string[] = []) {
     const processes = new Processes();
-    super(project, log, new QemuVirtualMachine(project, processes, log, args));
+    super(project, new QemuVirtualMachine(project, processes, log, args));
     this.processes = processes;
   }
 }

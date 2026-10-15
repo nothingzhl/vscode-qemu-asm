@@ -35,7 +35,7 @@ function client(t, options = {}) {
         adapter.handleMessage({ seq, type: 'request', command, arguments: args });
       });
     },
-    async settled() { await turn(); await adapter.queue; }
+    async settled() { await turn(); await adapter.channel.queue; }
   };
 }
 
@@ -74,12 +74,14 @@ async function configured(t) {
   const runtime = new ControlledRuntime();
   // Only the process/build boundaries are replaced; prepare(), listener setup,
   // source-map parsing, DAP requests and the adapter's queue execute unchanged.
-  t.mock.method(core, 'build', async (_project, _processes, _log, _cancelled, listingPath) => {
-    await fs.writeFile(listingPath, listing);
-    return { units: [{ source: fixture, loadAddress: 0x7c00, lba: 0, size: 512, listingPath }], imageBytes: 512 };
+  const c = client(t, {
+    getProject: async () => ({ source: fixture }),
+    runtimeFactory: () => runtime,
+    buildProject: async (_project, _processes, _log, _cancelled, listingPath) => {
+      await fs.writeFile(listingPath, listing);
+      return { units: [{ source: fixture, loadAddress: 0x7c00, lba: 0, size: 512, listingPath }], imageBytes: 512 };
+    },
   });
-  t.mock.method(runtimeModule, 'DebugRuntime', function () { return runtime; });
-  const c = client(t, { getProject: async () => ({ source: fixture }) });
   assert.equal((await c.request('launch')).success, true);
   assert.equal((await c.request('configurationDone')).success, true);
   runtime.stop({ reason: 'breakpoint', signal: 5 });
@@ -139,7 +141,7 @@ test('a natural stop ahead of a queued breakpoint update stays stopped until the
   const resumed = c.runtime.resumes;
   const baseline = c.messages.length;
   const gate = deferred();
-  c.adapter.queue = gate.promise;
+  c.adapter.channel.queue = gate.promise;
   const updating = c.request('setBreakpoints', { source: { path: c.fixture }, breakpoints: [{ line: 4 }] });
   c.runtime.stop({ reason: 'breakpoint', signal: 5 });
   // The physical stop must become visible before the queued request executes.

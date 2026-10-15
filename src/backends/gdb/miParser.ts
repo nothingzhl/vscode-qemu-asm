@@ -1,5 +1,7 @@
 export type MiValue = string | MiTuple | MiValue[];
-export interface MiTuple { [key: string]: MiValue }
+export interface MiTuple {
+  [key: string]: MiValue;
+}
 export interface MiRecord {
   token?: number;
   type: 'result' | 'exec' | 'status' | 'notify' | 'console' | 'target' | 'log' | 'prompt';
@@ -28,7 +30,7 @@ class Parser {
   private index = 0;
   private nodes = 0;
   private readonly repeated = new WeakMap<MiTuple, Set<string>>();
-  constructor(private readonly input: string) { }
+  constructor(private readonly input: string) {}
 
   record(): MiRecord | undefined {
     if (/^\(gdb\)\s*$/.test(this.input)) return { type: 'prompt', results: {} };
@@ -37,7 +39,15 @@ class Parser {
     const token = head[1] ? Number(head[1]) : undefined;
     if (token !== undefined && !Number.isSafeInteger(token)) throw new Error('MI 请求编号溢出');
     this.index = head[0].length;
-    const types: Record<string, MiRecord['type']> = { '^': 'result', '*': 'exec', '+': 'status', '=': 'notify', '~': 'console', '@': 'target', '&': 'log' };
+    const types: Record<string, MiRecord['type']> = {
+      '^': 'result',
+      '*': 'exec',
+      '+': 'status',
+      '=': 'notify',
+      '~': 'console',
+      '@': 'target',
+      '&': 'log'
+    };
     const type = types[head[2]];
     if (['console', 'target', 'log'].includes(type)) {
       const text = this.string();
@@ -57,14 +67,21 @@ class Parser {
     const key = this.identifier();
     this.expect('=');
     const value = this.value(depth + 1);
-    if (!Object.hasOwn(target, key)) Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
+    if (!Object.hasOwn(target, key))
+      Object.defineProperty(target, key, { value, enumerable: true, configurable: true, writable: true });
     else {
       // 保留重复键；常见于 stack=[frame={...},frame={...}] 的旧版 GDB 输出。
       const old = target[key];
       let repeated = this.repeated.get(target);
-      if (!repeated) { repeated = new Set(); this.repeated.set(target, repeated); }
+      if (!repeated) {
+        repeated = new Set();
+        this.repeated.set(target, repeated);
+      }
       if (repeated.has(key)) (old as MiValue[]).push(value);
-      else { target[key] = [old, value]; repeated.add(key); }
+      else {
+        target[key] = [old, value];
+        repeated.add(key);
+      }
     }
   }
 
@@ -77,7 +94,10 @@ class Parser {
       const tuple: MiTuple = {};
       if (this.input[this.index] !== '}') {
         this.result(tuple, depth);
-        while (this.input[this.index] === ',') { this.index++; this.result(tuple, depth); }
+        while (this.input[this.index] === ',') {
+          this.index++;
+          this.result(tuple, depth);
+        }
       }
       this.expect('}');
       return tuple;
@@ -94,7 +114,10 @@ class Parser {
           } else list.push(this.value(depth + 1));
         };
         item();
-        while (this.input[this.index] === ',') { this.index++; item(); }
+        while (this.input[this.index] === ',') {
+          this.index++;
+          item();
+        }
       }
       this.expect(']');
       return list;
@@ -106,19 +129,43 @@ class Parser {
     this.expect('"');
     const bytes: Buffer[] = [];
     let plain = '';
-    const flush = () => { if (plain) { bytes.push(Buffer.from(plain, 'utf8')); plain = ''; } };
+    const flush = () => {
+      if (plain) {
+        bytes.push(Buffer.from(plain, 'utf8'));
+        plain = '';
+      }
+    };
     while (this.index < this.input.length) {
       const character = this.input[this.index++];
-      if (character === '"') { flush(); return Buffer.concat(bytes).toString('utf8'); }
-      if (character !== '\\') { plain += character; continue; }
+      if (character === '"') {
+        flush();
+        return Buffer.concat(bytes).toString('utf8');
+      }
+      if (character !== '\\') {
+        plain += character;
+        continue;
+      }
       flush();
       if (this.index >= this.input.length) break;
       const escaped = this.input[this.index++];
-      const simple: Record<string, number> = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '\\': 92, '"': 34, "'": 39, '?': 63 };
+      const simple: Record<string, number> = {
+        a: 7,
+        b: 8,
+        t: 9,
+        n: 10,
+        v: 11,
+        f: 12,
+        r: 13,
+        '\\': 92,
+        '"': 34,
+        "'": 39,
+        '?': 63
+      };
       if (Object.hasOwn(simple, escaped)) bytes.push(Buffer.from([simple[escaped]]));
       else if (/[0-7]/.test(escaped)) {
         let octal = escaped;
-        while (octal.length < 3 && /[0-7]/.test(this.input[this.index] ?? 'x')) octal += this.input[this.index++];
+        while (octal.length < 3 && /[0-7]/.test(this.input[this.index] ?? 'x'))
+          octal += this.input[this.index++];
         bytes.push(Buffer.from([parseInt(octal, 8) & 255]));
       } else if (escaped === 'x') {
         let hex = '';
@@ -139,7 +186,9 @@ class Parser {
   private expect(character: string): void {
     if (this.input[this.index++] !== character) throw new Error(`MI 缺少 ${character}`);
   }
-  private end(): void { if (this.index !== this.input.length) throw new Error('MI 记录尾部无效'); }
+  private end(): void {
+    if (this.index !== this.input.length) throw new Error('MI 记录尾部无效');
+  }
 }
 
 export function parseMiRecord(line: string): MiRecord | undefined {
