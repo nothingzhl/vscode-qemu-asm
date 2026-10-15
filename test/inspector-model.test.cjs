@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { InspectorModel, parseAddress } = require('../dist/inspector/model');
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const turn = () => new Promise(resolve => setImmediate(resolve));
-const memory = (address = 0x7c00, bytes = [1, 2, 3]) => ({ address, count: bytes.length, bytes, mode: 'real16', follow: 'address' });
+const memory = (address = 0x7c00, bytes = [1, 2, 3]) => ({ address, count: bytes.length, bytes, mode: 'real16', follow: 'address', space: 'virtual', addressContext: 'virtual:unpaged', pagingEnabled: false, pageMappings: [] });
 function harness(id = 'a') {
   const requests = []; const snapshots = [];
   const session = { id, customRequest(command, args) { const pending = deferred(); requests.push({ command, args, ...pending }); return pending.promise; } };
@@ -114,4 +114,58 @@ test('instruction mutation keeps native ownership from its response and failed m
   assert.equal(h.model.snapshot.busy, false); assert.equal(h.model.snapshot.stale, true); assert.match(h.model.snapshot.message, /断点更新失败/);
   h.model.refresh(); assert.equal(h.requests[6].command, 'qemuAsm.disassemble');
   h.model.dispose(); h.requests[6].resolve(disassembly()); h.requests[7].resolve(instructionState()); await turn();
+});
+
+test('memory address spaces and paging contexts have independent bounded change baselines', async () => {
+  const h = harness(); start(h);
+  const virtual = (byte, cr3 = 0x100000) => ({ ...memory(0xc0100000, [byte]), mode: 'protected32', pagingEnabled: true, cr3, cr4: 0, addressContext: `virtual:legacy32:${cr3}:0`, pageMappings: [{ virtualPage: 0xc0100000, physicalPage: 0x210000 }] });
+  h.requests[0].resolve(virtual(1)); await turn();
+  h.model.refresh(); h.requests[1].resolve(virtual(2)); await turn(); assert.deepEqual(h.model.snapshot.memory.changed, [true]);
+  h.model.refresh(); h.requests[2].resolve(virtual(9, 0x110000)); await turn(); assert.deepEqual(h.model.snapshot.memory.changed, [false], 'same virtual address with another CR3 must have a fresh baseline');
+  h.model.configure({ memorySpace: 'physical', follow: 'esp' });
+  assert.equal(h.model.snapshot.form.follow, 'address'); assert.equal(h.requests[3].args.space, 'physical'); assert.equal(h.requests[3].args.follow, 'address');
+  h.requests[3].resolve({ ...virtual(17), space: 'physical', addressContext: 'physical' }); await turn();
+  assert.deepEqual(h.model.snapshot.memory.changed, [false], 'physical bytes must not compare against virtual bytes');
+  h.model.configure({ memorySpace: 'virtual' }); h.requests[4].resolve(virtual(3)); await turn();
+  assert.deepEqual(h.model.snapshot.memory.changed, [true], 'returning to a known paging context compares its own preceding snapshot');
+  h.model.configure({ memorySpace: 'physical' }); h.requests[5].resolve(virtual(4)); await turn();
+  assert.equal(h.model.snapshot.stale, true); assert.match(h.model.snapshot.message, /地址空间不匹配/);
+});
+const paging = (address = 0xc0100000) => ({ address, mode: 'protected32', pagingEnabled: true, format: 'legacy32', cr0: 0x80010001, cr3: 0x100000, cr4: 0,
+  wp: true, pse: false, directoryBase: 0x100000, directoryIndex: 768, tableIndex: 256, offset: 0,
+  status: 'mapped', physicalAddress: 0x210000, pageSize: 4096, warnings: [], explanation: '页级权限；不含段权限。',
+  effective: { user: false, writable: true, supervisorRead: true, supervisorWrite: true, userRead: false, userWrite: false },
+  pde: { level: 'directory', index: 768, address: 0x100c00, raw: 0x102003, present: true, writable: true, user: false, writeThrough: false, cacheDisable: false, accessed: true, pageSize: false, base: 0x102000 },
+  pte: { level: 'table', index: 256, address: 0x102400, raw: 0x210003, present: true, writable: true, user: false, writeThrough: false, cacheDisable: false, accessed: true, base: 0x210000 },
+});
+test('page walks are literal reads, discard old addresses/stops, and clear on restart', async () => {
+  const h = harness(); h.model.configure({ tab: 'paging', pagingAddress: 0xc0100000 }); start(h);
+  assert.equal(h.requests[0].command, 'qemuAsm.inspectPaging'); assert.deepEqual(h.requests[0].args, { address: 0xc0100000 });
+  h.model.configure({ pagingAddress: 0xc0100004 }); h.requests[0].resolve(paging()); await turn(); assert.equal(h.model.snapshot.paging, undefined);
+  h.requests[1].resolve(paging(0xc0100004)); await turn(); assert.equal(h.model.snapshot.paging.physicalAddress, 0x210000);
+  h.model.refresh(); h.model.running(); h.requests[2].resolve(paging()); await turn();
+  assert.equal(h.model.snapshot.paging.address, 0xc0100004); assert.equal(h.model.snapshot.stale, true);
+  h.model.request('restart'); assert.equal(h.model.snapshot.paging, undefined);
+});
+test('page walks show unsupported or missing pages without inventing a physical address', async () => {
+  const h = harness(); h.model.configure({ tab: 'paging' }); start(h);
+  h.requests[0].resolve({ ...paging(), status: 'unsupported', physicalAddress: undefined, explanation: 'PAE 分页暂不支持。' }); await turn();
+  assert.equal(h.model.snapshot.stale, false); assert.equal(h.model.snapshot.paging.physicalAddress, undefined);
+  h.model.refresh(); h.requests[1].resolve({ ...paging(), status: 'not-present', faultLevel: 'table', physicalAddress: 0x210000 }); await turn();
+  assert.equal(h.model.snapshot.stale, true); assert.match(h.model.snapshot.message, /无效的页表/);
+});
+
+test('paging memory comparison keeps overlap across viewport boundaries and separates remapped pages', async () => {
+  const h = harness(); start(h);
+  const data = (address, bytes, mappings) => ({ ...memory(address, bytes), pagingEnabled: true, mode: 'protected32', cr3: 0x100000, cr4: 0,
+    addressContext: 'virtual:legacy32:1048576:0', pageMappings: mappings.map(([virtualPage, physicalPage]) => ({ virtualPage, physicalPage })) });
+  h.requests[0].resolve(data(0x1ffc, [1, 2, 3, 4, 5, 6, 7, 8], [[0x1000, 0x3000], [0x2000, 0x5000]])); await turn();
+  h.model.configure({ address: 0x2000 }); h.requests[1].resolve(data(0x2000, [5, 9, 7, 8], [[0x2000, 0x5000]])); await turn();
+  assert.deepEqual(h.model.snapshot.memory.changed, [false, true, false, false], 'viewport losing its first page must retain overlap history for the second page');
+  h.model.refresh(); h.requests[2].resolve(data(0x2000, [10, 11, 12, 13], [[0x2000, 0x7000]])); await turn();
+  assert.deepEqual(h.model.snapshot.memory.changed, [false, false, false, false], 'a changed PTE must not compare a different physical page');
+  h.model.refresh(); h.requests[3].resolve(data(0x2000, [5, 10, 7, 8], [[0x2000, 0x5000]])); await turn();
+  assert.deepEqual(h.model.snapshot.memory.changed, [false, true, false, false]);
+  h.model.refresh(); h.requests[4].resolve(data(0x2000, [5], [])); await turn();
+  assert.equal(h.model.snapshot.stale, true); assert.match(h.model.snapshot.message, /缺少物理映射/);
 });

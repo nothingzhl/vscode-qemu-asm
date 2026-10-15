@@ -32,7 +32,36 @@ export class RspClient extends EventEmitter {
   }
 
   command(payload: string): Promise<string> {
-    const operation = this.queue.then(() => new Promise<string>((resolve, reject) => {
+    return this.enqueue(() => this.request(payload));
+  }
+
+  /** 临时改变 QEMU 全局状态时，整个请求组独占队列，包含失败后的恢复请求。 */
+  transaction<T>(action: (command: (payload: string) => Promise<string>) => Promise<T>): Promise<T> {
+    return this.enqueue(async () => {
+      let active = true;
+      let requests: Promise<unknown> = Promise.resolve();
+      const command = (payload: string): Promise<string> => {
+        if (!active) return Promise.reject(new Error('QEMU 调试请求事务已经结束'));
+        const request = requests.then(() => this.request(payload));
+        requests = request.catch(() => undefined);
+        return request;
+      };
+      try { return await action(command); }
+      finally { active = false; await requests; }
+    });
+  }
+
+  private enqueue<T>(action: () => Promise<T> | T): Promise<T> {
+    const operation = this.queue.then(() => {
+      if (this.closed) throw new Error('QEMU 调试连接已关闭');
+      return action();
+    });
+    this.queue = operation.catch(() => undefined);
+    return operation;
+  }
+
+  private request(payload: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
       if (this.closed) { reject(new Error('QEMU 调试连接已关闭')); return; }
       const timer = setTimeout(() => {
         const error = new Error(`QEMU 调试请求超时：${payload.slice(0, 60)}`);
@@ -43,24 +72,18 @@ export class RspClient extends EventEmitter {
       }, this.timeout);
       this.pending = { resolve, reject, timer, console: [], expectsStop: payload === '?' };
       this.send(payload);
-    }));
-    this.queue = operation.catch(() => undefined);
-    return operation;
+    });
   }
 
   /** continue/step 的停止回复可能几分钟后才出现，不占用请求队列。 */
   resume(step = false): Promise<void> {
-    const operation = this.queue.then(() => {
-      if (this.closed) throw new Error('QEMU 调试连接已关闭');
+    return this.enqueue(() => {
       this.send(step ? 's' : 'c');
     });
-    this.queue = operation.catch(() => undefined);
-    return operation;
   }
 
-  interrupt(): void {
-    if (this.closed) throw new Error('QEMU 调试连接已关闭');
-    this.socket.write(Buffer.from([3]));
+  interrupt(): Promise<void> {
+    return this.enqueue(() => { this.socket.write(Buffer.from([3])); });
   }
 
   close(): void { this.disconnect(new Error('QEMU 调试连接已关闭')); this.socket.destroy(); }

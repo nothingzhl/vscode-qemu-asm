@@ -28,7 +28,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterTrackerFactory('qemu-asm', { createDebugAdapterTracker: session => inspector.createDebugAdapterTracker(session) }),
     vscode.commands.registerCommand('qemuAsm.showInspector', () => vscode.commands.executeCommand('qemuAsm.inspector.focus')),
     vscode.commands.registerCommand('qemuAsm.showDisassembly', () => inspector.show('disassembly')),
-    vscode.commands.registerCommand('qemuAsm.showDataBreakpoints', () => inspector.show('watchpoints'))
+    vscode.commands.registerCommand('qemuAsm.showDataBreakpoints', () => inspector.show('watchpoints')),
+    vscode.commands.registerCommand('qemuAsm.showPaging', () => inspector.show('paging'))
   );
   async function folder(): Promise<vscode.WorkspaceFolder> {
     const folders = vscode.workspace.workspaceFolders;
