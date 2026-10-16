@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -18,8 +19,17 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Restore actionlint executable
+        id: actionlint
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/actionlint
+          key: actionlint-1.7.7-${{ runner.os }}-${{ runner.arch }}
+      - name: Install pinned actionlint
+        if: steps.actionlint.outputs.cache-hit != 'true'
+        run: GOBIN="$RUNNER_TEMP/actionlint" CGO_ENABLED=0 go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
       - name: Validate every GitHub Actions workflow
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
+        run: '"$RUNNER_TEMP/actionlint/actionlint" -color'
 
   quality:
     name: Quality (${{ matrix.os }})
@@ -35,7 +45,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npm run check
       - run: npm run docs:check
       - name: Unit and contract tests with coverage
@@ -64,7 +74,7 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: ./.github/actions/setup-tools
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npm run compile
       - name: Test actual NASM, QEMU, GDB and external C build
         run: node scripts/ci/run-suite.cjs --suite full --output artifacts/integration
@@ -107,7 +117,10 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: ./.github/actions/setup-tools
-      - run: npm ci
+      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-vscode
+        with:
+          version: ${{ matrix.vscode }}
       - run: npm run compile
       - name: Native macOS / Windows NASM and RSP integration
         if: runner.os != 'Linux'
@@ -137,8 +150,16 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - run: npm ci --prefer-offline
+      - name: Restore pinned packaging tool cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vsce-npm
+          key: vsce-4.0.0-node22-${{ runner.os }}-${{ runner.arch }}
       - name: Package runtime dependencies, including decoder WASM
+        env:
+          npm_config_cache: ${{ runner.temp }}/vsce-npm
+          npm_config_prefer_offline: true
         run: npm exec --yes --package=@vscode/vsce@4.0.0 -- vsce package --githubBranch "$GITHUB_SHA" --out "$RUNNER_TEMP/qemu-asm.vsix"
       - uses: actions/upload-artifact@v4
         with:
@@ -164,7 +185,10 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: ./.github/actions/setup-tools
-      - run: npm ci
+      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-vscode
+        with:
+          version: ${{ matrix.vscode }}
       - uses: actions/download-artifact@v4
         with:
           name: extension-vsix
@@ -201,18 +225,11 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: ./.github/actions/setup-tools
-      - name: Install upstream ISO build tool
-        run: sudo apt-get install -y --no-install-recommends genisoimage
-      - run: npm ci
+      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-vscode
+        with:
+          version: '1.96.4'
       - run: npm run compile
-      - name: Prepare fixed VS Code host
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          require('@vscode/test-electron').downloadAndUnzipVSCode(process.env.VSCODE_VERSION).then(executable => {
-            fs.appendFileSync(process.env.GITHUB_ENV, `VSCODE_EXECUTABLE_PATH=${executable}\n`);
-          }).catch(error => { console.error(error); process.exitCode = 1; });
-          NODE
       - name: Original build baseline and development host
         run: xvfb-run -a node scripts/ci/run-suite.cjs --suite os-project --output artifacts/os-project
       - uses: actions/download-artifact@v4
