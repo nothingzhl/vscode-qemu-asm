@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import { ElfDebugConfiguration, ExternalBuild, Project, Stage } from './model';
+import { MachineProfileSelection, resolveMachineProfiles } from './machineProfiles';
 
 function string(value: unknown, fallback: string): string {
   if (value === undefined) return fallback;
@@ -11,10 +12,12 @@ export function resolveProject(
   workspace: string,
   projectDir: unknown,
   data: unknown,
-  tools: { nasm?: unknown; qemu?: unknown; qemuArgs?: unknown; gdb?: unknown } = {}
+  tools: { nasm?: unknown; qemu?: unknown; qemuArgs?: unknown; gdb?: unknown; displayMode?: unknown } = {},
+  selection?: MachineProfileSelection
 ): Project {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('项目配置必须是 JSON 对象');
   const config = data as Record<string, unknown>;
+  const machineProfiles = resolveMachineProfiles(config, tools.displayMode, selection);
   const configuredPath = (value: unknown, fallback: string) => {
     const name = string(value, fallback);
     if (/^[a-z]:[^\\/]/i.test(name) || /^[a-z]:$/i.test(name))
@@ -159,6 +162,7 @@ export function resolveProject(
     qemuArgs: [...args],
     ...(boot ? { boot } : {}),
     ...(buildMode ? { buildMode } : {}),
+    ...machineProfiles,
     ...(externalBuild ? { build: externalBuild } : {}),
     ...(debug ? { debug } : {})
   };

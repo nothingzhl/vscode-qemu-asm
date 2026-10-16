@@ -8,7 +8,7 @@
 | --- | --- |
 | [快速开始](QUICKSTART.md) | 安装后如何完成第一次构建、运行和断点调试 |
 | [真实 OS 工程](OS_PROJECT.md) | 接入固定版本 DreamOS，保留已有 Make / GRUB / ISO 构建链 |
-| [配置参考](CONFIGURATION.md) | 工具路径、项目目录、NASM 阶段、外部构建和 ELF/DWARF |
+| [配置参考](CONFIGURATION.md) | 工具路径、多套启动方案、引导介质、外部构建和 ELF/DWARF |
 | [调试指南](DEBUGGING.md) | 汇编/C 单步、调用栈、内存、描述符、页表、显示器及功能边界 |
 | [常见问题](TROUBLESHOOTING.md) | 环境、构建、断点、显示器与远程宿主问题 |
 | [兼容性](COMPATIBILITY.md) | 平台、工具版本、实际验证与 CI 矩阵的区别 |
@@ -30,6 +30,7 @@
 
 | 阶段 | 记录 |
 | --- | --- |
+| 启动方案（0.9.0） | [启动方案验收](MACHINE_PROFILES_VALIDATION.md) |
 | 真实 OS 工程接入（2026-10-16） | [DreamOS ISO 验证](OS_PROJECT_VALIDATION.md) |
 | 首版、历次版本概览 | [验证记录](VALIDATION.md) |
 | 汇编调试与保护模式 | [基础调试](DEBUG_VALIDATION.md) · [二阶段保护模式](PROTECTED_VALIDATION.md) |

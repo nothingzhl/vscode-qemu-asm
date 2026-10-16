@@ -8,7 +8,8 @@ import { DependencyReports } from './integration/vscode/dependencyReports';
 import { createDisplaySession } from './integration/vscode/displaySession';
 import { createExample } from './integration/vscode/examples';
 import { registerInspector } from './integration/vscode/inspector';
-import { selectWorkspace as folder, readProject as project } from './integration/vscode/projects';
+import { MachineProfiles } from './integration/vscode/machineProfiles';
+import { selectWorkspace as folder } from './integration/vscode/projects';
 import { Processes } from './platform/processes';
 import { Project } from './project/model';
 
@@ -36,6 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const display = (displays = new DisplayController(context, trusted, (text) => output.append(text)));
   registerInspector(context);
   const runSession = (runs = new RunSession());
+  const profiles = new MachineProfiles(context, trusted);
   async function stop(): Promise<void> {
     generation++;
     await Promise.all([
@@ -51,9 +53,9 @@ export function activate(context: vscode.ExtensionContext): void {
     state(p.buildMode === 'existing' ? '验证产物中' : '构建中');
     await compileProject(p, runner, output, diagnostics, () => token !== generation);
   }
-  function register(name: string, action: () => Promise<unknown>, exclusive = true): void {
+  function register(name: string, action: (...args: unknown[]) => Promise<unknown>, exclusive = true): void {
     context.subscriptions.push(
-      vscode.commands.registerCommand(`qemuAsm.${name}`, async () => {
+      vscode.commands.registerCommand(`qemuAsm.${name}`, async (...args: unknown[]) => {
         if (exclusive && busy) {
           void vscode.window.showWarningMessage('正在执行操作，请稍候或停止。');
           return;
@@ -62,11 +64,11 @@ export function activate(context: vscode.ExtensionContext): void {
         try {
           trusted();
           output.show(true);
-          return await action();
+          return await action(...args);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           output.appendLine(message);
-          state('失败');
+          if (name !== 'selectMachineProfile' && name !== 'configureMachineProfiles') state('失败');
           void vscode.window.showErrorMessage(`QEMU Assembly：${message}`);
         } finally {
           if (exclusive) busy = false;
@@ -74,21 +76,25 @@ export function activate(context: vscode.ExtensionContext): void {
       })
     );
   }
-  const reports = new DependencyReports(context, output, runner, () => generation, trusted);
+  const reports = new DependencyReports(
+    context,
+    output,
+    runner,
+    () => generation,
+    trusted,
+    profiles.read.bind(profiles)
+  );
   register('checkEnvironment', () => reports.check());
   register('showDependencyReport', () => reports.show());
-  function displayEnabled(selected?: vscode.WorkspaceFolder): boolean {
-    return (
-      vscode.workspace.getConfiguration('qemuAsm', selected?.uri).get<string>('displayMode', 'auto') !== 'off'
-    );
-  }
+  register('selectMachineProfile', (argument) => profiles.select(argument));
+  register('configureMachineProfiles', (argument) => profiles.configure(argument));
   register('createProject', () => createExample('boot', trusted));
   register('createProtectedProject', () => createExample('protected', trusted));
   register('build', async () => {
     await stop();
     const token = generation;
     if (!(await vscode.workspace.saveAll(false))) throw new Error('文件未能保存，已取消构建。');
-    const p = await project();
+    const p = await profiles.read();
     trusted();
     if (token !== generation) return;
     await compile(p, token);
@@ -99,13 +105,13 @@ export function activate(context: vscode.ExtensionContext): void {
     const token = generation;
     if (!(await vscode.workspace.saveAll(false))) throw new Error('文件未能保存，已取消构建。');
     const selected = await folder();
-    const p = await project(true, selected);
+    const p = await profiles.read(true, selected);
     trusted();
     if (token !== generation) return;
     await compile(p, token);
     if (token !== generation) return;
     const run = await runSession.start(async () => {
-      const presentation = await createDisplaySession(display, displayEnabled(selected));
+      const presentation = await createDisplaySession(display, p.displayMode !== 'off');
       try {
         trusted();
         return {
@@ -164,6 +170,7 @@ export function activate(context: vscode.ExtensionContext): void {
           if (target.uri.scheme !== 'file') throw new Error('调试仅支持文件系统工作区');
           await stop();
           if (!(await vscode.workspace.saveAll(false))) throw new Error('文件未能保存，已取消调试');
+          await profiles.read(true, target, config.machineProfile);
           trusted();
           return {
             ...config,
@@ -188,16 +195,16 @@ export function activate(context: vscode.ExtensionContext): void {
             (item) => item.uri.toString() === session.configuration.__workspace
           );
         if (!selected) throw new Error('调试会话缺少所选工作区');
-        const configured = await project(true, selected);
+        const configured = await profiles.read(true, selected, session.configuration.machineProfile);
         trusted();
         if (token !== generation) throw new Error('调试启动已取消');
         if ((configured.build || configured.buildMode === 'existing' || configured.boot?.type === 'iso') && !configured.debug)
           throw new Error('外部构建或已有产物的源码调试需要在 qemu-asm.json 中配置 debug.elf。');
         const adapter = createDebugAdapter(configured, {
-          getProject: () => project(true, selected),
+          getProject: () => profiles.read(true, selected, session.configuration.machineProfile),
           isTrusted: () => vscode.workspace.isTrusted,
           log: (text) => output.append(text),
-          createDisplay: () => createDisplaySession(display, displayEnabled(selected))
+          createDisplay: (project) => createDisplaySession(display, project.displayMode !== 'off')
         });
         debugAdapters.add(adapter);
         const dispose = adapter.dispose.bind(adapter);

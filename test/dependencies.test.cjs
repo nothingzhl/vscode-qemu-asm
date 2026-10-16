@@ -33,6 +33,8 @@ async function fixture(t, options = {}) {
     ...localHost,
     identity: { ...localHost.identity },
     env: { ...process.env, PATH: bin },
+    // Keep native cleanup (including Windows taskkill) out of the Node tool wrapper.
+    terminateProcessTree: localHost.terminateProcessTree.bind(localHost),
     spawn(command, args, spawnOptions) {
       calls.push({ command, args: [...args], cwd: spawnOptions.cwd });
       return spawn(process.execPath, [command, ...args], spawnOptions);
@@ -112,7 +114,8 @@ test('external C doctor resolves builder without executing it or requiring NASM'
 test('missing and non-executable tools produce structured failures without being launched', async t => {
   const f = await fixture(t);
   f.project.nasm = path.join(f.root, 'missing nasm');
-  f.project.qemu = f.root;
+  f.project.qemu = path.join(f.root, 'not a tool.exe');
+  await fs.mkdir(f.project.qemu);
   const report = await checkEnvironment(f.project, f.processes);
   assert.equal(report.status, 'failed'); assert.equal(f.calls.length, 0);
   assert.deepEqual(report.tools.map(tool => tool.resolution.status), ['missing', 'not-executable']);

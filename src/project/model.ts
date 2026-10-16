@@ -1,3 +1,6 @@
+import type { MachineProfile, SelectedMachineProfile } from './machineProfiles';
+export type { MachineProfile, MachineProfileSelection, SelectedMachineProfile } from './machineProfiles';
+
 export interface Stage {
   source: string;
   loadAddress: number;
@@ -38,6 +41,11 @@ export interface Project {
   boot?: BootConfiguration;
   /** Explicit reuse of an artifact; absence preserves the legacy NASM build. */
   buildMode?: 'existing';
+  machineProfiles?: Record<string, MachineProfile>;
+  defaultMachineProfile?: string;
+  machineProfile?: SelectedMachineProfile;
+  displayMode?: 'auto' | 'off';
+  displayModeSource?: 'workspace' | 'default';
   build?: ExternalBuild;
   debug?: ElfDebugConfiguration;
 }

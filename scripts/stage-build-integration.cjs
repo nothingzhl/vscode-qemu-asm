@@ -27,7 +27,7 @@ const { PROTECTED_MARKER, createProject, resolveProject, build, Processes, qemuA
     let output = '';
     let received;
     const marker = new Promise(resolve => { received = resolve; });
-    const run = runner.start(project.qemu, qemuArguments(project), root, text => {
+    const run = runner.start(project.qemu, qemuArguments(project, runner.host), project.root, text => {
       output += text;
       process.stdout.write(text);
       if (output.includes(PROTECTED_MARKER)) received();

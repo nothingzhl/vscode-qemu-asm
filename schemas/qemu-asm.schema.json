@@ -1,0 +1,240 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QEMU ASM 项目",
+  "description": "项目构建、调试及 QEMU 启动方案。未配置启动方案时保留工作区设置和默认启动行为。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/definitions/path",
+      "default": "boot.asm"
+    },
+    "image": {
+      "$ref": "#/definitions/path",
+      "default": "build/boot.img"
+    },
+    "stages": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "loadAddress",
+          "lba"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/definitions/path"
+          },
+          "loadAddress": {
+            "type": "integer",
+            "minimum": 32768,
+            "maximum": 655359
+          },
+          "lba": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 17
+          }
+        }
+      }
+    },
+    "build": {
+      "description": "省略时使用内置 NASM；false 使用已有产物；对象指定工程自己的构建命令。",
+      "oneOf": [
+        {
+          "const": false
+        },
+        {
+          "description": "外部构建负责生成镜像，不能同时配置非空 NASM stages。",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/definitions/path"
+            },
+            "args": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\u0000]*$"
+              },
+              "default": []
+            },
+            "cwd": {
+              "$ref": "#/definitions/path",
+              "default": "."
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 1800000,
+              "default": 120000
+            }
+          }
+        }
+      ]
+    },
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "elf"
+      ],
+      "properties": {
+        "elf": {
+          "$ref": "#/definitions/path"
+        },
+        "gdbPath": {
+          "$ref": "#/definitions/path"
+        },
+        "sourceMap": {
+          "type": "object",
+          "maxProperties": 128,
+          "propertyNames": {
+            "$ref": "#/definitions/path"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/path"
+          }
+        },
+        "entry": {
+          "type": "string",
+          "pattern": "^(?:0[xX][0-9a-fA-F]{1,8}|[a-zA-Z_.$][a-zA-Z0-9_.$:]*)$"
+        }
+      }
+    },
+    "machineProfiles": {
+      "description": "按名称保存启动方案。字段可省略并继承工作区设置；本阶段保持单 CPU。",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/definitions/profileName"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/machineProfile"
+      },
+      "defaultSnippets": [
+        {
+          "label": "默认与低内存启动方案",
+          "body": {
+            "normal": {
+              "memoryMiB": 64,
+              "cpuModel": "qemu32",
+              "display": true
+            },
+            "low-memory": {
+              "memoryMiB": 16,
+              "cpuModel": "qemu32",
+              "display": false
+            }
+          }
+        }
+      ]
+    },
+    "defaultMachineProfile": {
+      "$ref": "#/definitions/profileName",
+      "description": "必须引用 machineProfiles 中已有的方案；启动项指定和项目手动选择优先。"
+    },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "floppy",
+            "iso"
+          ],
+          "description": "BIOS raw 软盘或包含默认 BIOS x86 El Torito 引导项的 ISO；省略时为软盘。"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "build"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stages": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "boot"
+        ],
+        "properties": {
+          "boot": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "iso"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "build"
+        ]
+      }
+    }
+  ],
+  "definitions": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?=[\\s\\S]*\\S)[^\\u0000]+$"
+    },
+    "profileName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)[^\\u0000-\\u001f\\u007f-\\u009f]+$"
+    },
+    "machineProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memoryMiB": {
+          "description": "i386 客体内存，单位 MiB。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "cpuModel": {
+          "description": "单个 QEMU CPU 型号；实际支持性由当前 QEMU 验证，不接受逗号或特性开关。",
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$"
+        },
+        "display": {
+          "description": "是否启用插件内嵌显示器。",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

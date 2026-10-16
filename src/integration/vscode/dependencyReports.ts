@@ -14,7 +14,8 @@ export class DependencyReports {
     private readonly output: vscode.OutputChannel,
     private readonly runner: Processes,
     private readonly generation: () => number,
-    private readonly trusted: () => void
+    private readonly trusted: () => void,
+    private readonly project: typeof readProject = readProject
   ) {
     context.subscriptions.push(
       vscode.workspace.registerTextDocumentContentProvider('qemu-asm-report', {
@@ -36,10 +37,10 @@ export class DependencyReports {
   }
   async report() {
     const selected = await selectWorkspace();
-    let p = await readProject(false, selected);
+    let p = await this.project(false, selected);
     try {
       await fs.access(path.join(p.root, 'qemu-asm.json'));
-      p = await readProject(true, selected);
+      p = await this.project(true, selected);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

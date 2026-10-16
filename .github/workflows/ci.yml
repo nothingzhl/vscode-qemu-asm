@@ -85,10 +85,10 @@ jobs:
         include:
           - os: ubuntu-24.04
             vscode: '1.96.4'
-            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies
+            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies,machine-profiles
           - os: ubuntu-24.04
             vscode: stable
-            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies
+            phases: trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies,machine-profiles
           - os: macos-14
             vscode: stable
             phases: trusted,untrusted,resources,debug,display

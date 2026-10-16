@@ -16,6 +16,7 @@
 | C 内核 | ELF/DWARF 源码断点、源码单步、调用栈、参数、局部变量、结构体、数组和指针 |
 | 观察机器状态 | 反汇编、地址/数据断点、虚拟/物理内存、GDT、IDT、IVT、非 PAE 页表 |
 | 查看客体画面 | 源码右侧的 QEMU VGA 显示器；可手动开启键盘输入 |
+| 选择机器环境 | 为项目保存多套内存、CPU 型号与显示器方案，运行或调试前选择 |
 | 接入自己的项目 | `qemu-asm.json` 配置 NASM 构建或已有外部构建命令 |
 
 当前针对单 CPU、x86 16/32 位客体，支持 BIOS raw 软盘及 BIOS El Torito ISO 引导。64 位、PAE、SMP、远程 attach、完整 C++ 调试和语法补全尚未提供。NASM 映射规则、只读能力及两条后端的差异见[调试范围](docs/DEBUGGING.md#支持范围)。
@@ -65,6 +66,8 @@ sudo apt-get install nasm qemu-system-x86
 ```
 
 工具设置、二阶段布局、外部构建、ELF 路径与源码映射的完整示例见[配置参考](docs/CONFIGURATION.md)。默认在运行和调试前构建；`build: false` 明确使用已有产物。外部构建失败会阻止本次启动，工程镜像和 ELF 保留。日志位于 **输出 → QEMU Assembly**，NASM 错误同时出现在“问题”面板。
+
+同一项目需要不同机器环境时，执行 **QEMU Assembly: 配置启动方案** 编辑项目配置，再用 **QEMU Assembly: 选择启动方案** 切换。方案支持内存、CPU 型号和显示器开关，下次启动或重启生效；示例及优先级见[启动方案](docs/CONFIGURATION.md#启动方案)。
 
 ## 文档与参与开发
 

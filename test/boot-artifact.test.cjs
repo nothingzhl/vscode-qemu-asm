@@ -90,3 +90,19 @@ test('existing artifacts do not require NASM or an external builder in the envir
   assert.deepEqual(report.tools.map(tool => tool.id), ['qemu']);
   assert.equal(report.project.build, 'existing');
 });
+
+test('ISO media preserves selected machine resources and native Windows relative paths', () => {
+  const project = resolveProject('/os', '.', {
+    image: 'boot.iso', boot: { type: 'iso' }, build: false,
+    machineProfiles: { normal: { memoryMiB: 64, cpuModel: 'qemu32', display: false } },
+    defaultMachineProfile: 'normal'
+  }, { qemuArgs: ['-m', '16M', '-smp', '1'] });
+  const args = qemuArguments(project);
+  assert.equal(args[args.indexOf('-m') + 1], '64M');
+  assert.equal(args[args.indexOf('-cpu') + 1], 'qemu32');
+  assert.equal(args[args.indexOf('-smp') + 1], '1');
+  assert(args.some(arg => arg.includes('media=cdrom')));
+  const windows = qemuArguments({ ...project, root: 'C:\\OS workspace', image: 'C:\\OS workspace\\boot, image.iso' },
+    { identity: { platform: 'win32' }, paths: path.win32 });
+  assert(windows.includes('file=.\\boot,, image.iso,format=raw,media=cdrom,readonly=on'));
+});

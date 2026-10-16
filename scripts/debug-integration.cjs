@@ -163,7 +163,7 @@ class Client {
     clients.push(client);
     await client.launch();
     const entry = await client.state();
-    assert.equal(path.resolve(entry.frame.source.path), project.source);
+    assert.equal(await fs.realpath(entry.frame.source.path), await fs.realpath(project.source));
     assert.equal(entry.frame.line, entryLine);
     await client.stoppedAfter('stepIn');
     assert.equal((await client.state()).frame.line, entryLine + 1);

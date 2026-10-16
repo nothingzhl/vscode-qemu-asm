@@ -76,7 +76,21 @@ DREAMOS_SOURCE=/path/to/pinned-Dreamos \
 
 本地原始日志和结构化结果位于 `artifacts/os-project/`：`real/results.json`、两份真实工程日志、`installed.log`、`regression/results.json` 和 `quality/`。这些是被 Git 忽略的本地运行产物；本文保存可审查的执行范围与复现入口，后续 CI 应以各次上传的 `os-project-dreamos` 产物为准。
 
-主 CI 新增固定上游提交的独立任务，执行原生/插件基线、VS Code 开发宿主和独立安装 VSIX，并纳入最终门禁。此次已在本地执行这些入口，尚未推送或执行 GitHub Actions，不能将工作流配置视为远端已通过。
+主 CI 新增固定上游提交的独立任务，执行原生/插件基线、VS Code 开发宿主和独立安装 VSIX，并纳入最终门禁。此次已在本地执行这些入口；远端 GitHub Actions 的实际结果以 PR 检查为准，不能将工作流配置视为远端已通过。
+
+## PR 同步最新 main 后的补验
+
+创建 PR 前合入 `main` 的 `584d18e`，保留 0.9.0 的启动方案、原生 QEMU 路径和 NASM 适配。ISO 引导继续使用选择后的机器参数；新增 JSON Schema 同时接受 `boot` 和 `build: false`。补充了 ISO 与启动方案组合、Windows 相对路径生成的行为断言；路径模拟不代表 Windows 原生 ISO 已通过。
+
+合并后的本地执行结果：
+
+- 类型检查、编译、文档检查、actionlint 与差异空白检查通过。
+- 412 项单元/契约测试：407 通过、5 跳过、0 失败；覆盖率为行/语句 84.16%、分支 86.76%、函数 86.47%。
+- 15 组真实工具集成全部通过，包括最新 main 的启动方案集成。
+- DreamOS 原生基线、插件调试、VS Code 1.96.4 开发宿主和独立安装 0.9.0 候选 VSIX 再次通过。
+- 用 JSON Schema 校验器检查真实工程配置及 `build: false` 配置，均通过。
+
+补验日志在 `artifacts/os-project/pr-regression/`、`pr-real/` 和 `pr-installed.log`；最终远端 CI 结果以 PR 检查为准。
 
 ## 边界
 

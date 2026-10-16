@@ -148,7 +148,7 @@ class Client {
     assert.equal(image.length, 1440 * 1024);
     assert.deepEqual([...image.subarray(510, 512)], [0x55, 0xaa]);
     assert.equal(result.units.length, 2);
-    assert.equal(path.resolve(result.units[1].source), path.resolve(stage));
+    assert.equal(await fs.realpath(result.units[1].source), await fs.realpath(stage));
     assert.equal(result.units[1].lba, 1);
     assert.equal(result.units[1].loadAddress, 0x8000);
     assert(image.subarray(512, 512 + result.units[1].size).includes(Buffer.from(core.PROTECTED_MARKER)));
@@ -157,17 +157,17 @@ class Client {
     const client = new Client(project);
     clients.push(client);
     await client.launch();
-    assert.equal(path.resolve((await client.state()).frame.source.path), path.resolve(project.source));
+    assert.equal(await fs.realpath((await client.state()).frame.source.path), await fs.realpath(project.source));
     await client.breakpoints(project.source, [lines.bootJump]);
     await client.breakpoints(stage, [lines.stageEntry]);
     await client.stoppedAfter('continue');
     let state = await client.state();
-    assert.equal(path.resolve(state.frame.source.path), path.resolve(project.source));
+    assert.equal(await fs.realpath(state.frame.source.path), await fs.realpath(project.source));
     assert.equal(state.frame.line, lines.bootJump, 'a stage2 breakpoint must preserve the boot source breakpoint');
     await client.breakpoints(project.source, []);
     await client.stoppedAfter('continue');
     state = await client.state();
-    assert.equal(path.resolve(state.frame.source.path), path.resolve(stage));
+    assert.equal(await fs.realpath(state.frame.source.path), await fs.realpath(stage));
     assert.equal(state.frame.line, lines.stageEntry);
     console.log('PASS: actual BIOS sector loading reaches stage2; breakpoints remain independent for both source files');
 
@@ -227,7 +227,7 @@ class Client {
     const beforeRestart = qemus.length;
     await client.stoppedAfter('restart', {});
     state = await client.state();
-    assert.equal(path.resolve(state.frame.source.path), path.resolve(project.source));
+    assert.equal(await fs.realpath(state.frame.source.path), await fs.realpath(project.source));
     assert.equal(qemus.length, beforeRestart + 1);
     await client.breakpoints(stage, [lines.call]);
     await client.stoppedAfter('continue');
@@ -302,7 +302,7 @@ ret
     await pure.breakpoints(stage, [pureEntry, pureBreakpoint]);
     await pure.stoppedAfter('continue');
     let pureState = await pure.state();
-    assert.equal(path.resolve(pureState.frame.source.path), path.resolve(stage));
+    assert.equal(await fs.realpath(pureState.frame.source.path), await fs.realpath(stage));
     assert.equal(pureState.frame.line, pureEntry);
     assert.equal(register(pureState.registers, 'cs'), 8);
     await pure.stoppedAfter('stepIn');

@@ -50,7 +50,7 @@ async function fixture(t, options = {}) {
   t.after(() => { for (const socket of sockets) socket.destroy(); server.close(); });
   const client = await RspClient.connect(server.address().port, '127.0.0.1', 1000, options.timeout ?? 1000);
   t.after(() => client.close());
-  const runtime = new DebugRuntime({}, () => {});
+  const runtime = new DebugRuntime({ qemuArgs: [] }, () => {});
   runtime.client = client;
   return { runtime, client, commands, mode: () => mode };
 }

@@ -35,7 +35,7 @@ async function main() {
     assert(decoder.startsWith(extension + path.sep), 'Decoder must resolve from the VSIX');
     assert.equal(await fs.stat(path.join(path.dirname(decoder), 'iced_x86_bg.wasm')).then(item => item.isFile()), true);
     const env = { ...process.env, VSCODE_EXECUTABLE_PATH: executable, QEMU_ASM_VSIX_EXTENSION: extension };
-    for (const name of ['vsix-machine-test', 'vsix-paging-test', 'vsix-c-source-test', 'vsix-dependencies-test']) {
+    for (const name of ['vsix-machine-test', 'vsix-paging-test', 'vsix-c-source-test', 'vsix-dependencies-test', 'vsix-machine-profiles-test']) {
       results.push(await runScript(name, output, env));
     }
     const report = writeResults(output, results, {

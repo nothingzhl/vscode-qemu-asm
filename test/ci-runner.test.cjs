@@ -65,7 +65,9 @@ test('failed host setup preserves its child exit, logs and JSON instead of repor
 
 test('CI gate requires success and rejects failed, cancelled or skipped dependency jobs', () => {
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
-  const gate = workflow.match(/node <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/);
+  const gateJob = workflow.indexOf('\n  ci:\n');
+  assert(gateJob >= 0, 'CI result job must exist');
+  const gate = workflow.slice(gateJob).match(/node <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/);
   assert(gate, 'CI result must expose its Node gate command');
   for (const state of ['success', 'failure', 'cancelled', 'skipped']) {
     const result = invoke(['-e', gate[1]], {
