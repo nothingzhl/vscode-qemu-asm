@@ -1,0 +1,35 @@
+name: Prepare cached VS Code test host
+description: Resolve stable to an exact version and cache only that host distribution.
+inputs:
+  version:
+    description: Fixed version or stable; stable is resolved on every run.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Resolve exact VS Code version
+      id: version
+      shell: bash
+      env:
+        REQUESTED_VSCODE: ${{ inputs.version }}
+      run: node scripts/ci/vscode-cache.cjs resolve "$REQUESTED_VSCODE"
+    - name: Restore VS Code distribution
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.version.outputs.directory }}
+        key: vscode-v1-${{ steps.version.outputs.platform }}-${{ steps.version.outputs.version }}-test-electron-${{ steps.version.outputs.downloader }}
+    - name: Prepare executable and record cache result
+      shell: bash
+      env:
+        EXACT_VSCODE: ${{ steps.version.outputs.version }}
+        VSCODE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+      run: |
+        node scripts/ci/vscode-cache.cjs install "$EXACT_VSCODE"
+        echo "VS Code $EXACT_VSCODE cache hit: ${VSCODE_CACHE_HIT:-false}" >> "$GITHUB_STEP_SUMMARY"
+    - name: Save verified VS Code distribution before running tests
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.version.outputs.directory }}
+        key: ${{ steps.cache.outputs.cache-primary-key }}

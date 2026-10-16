@@ -2,6 +2,7 @@ name: Tool compatibility
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:
@@ -31,18 +32,52 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - run: npm ci --prefer-offline
       - run: npm run compile
+      - name: Select weekly package download cache
+        id: epoch
+        run: echo "week=$(node -p 'Math.floor(Date.now() / 604800000)')" >> "$GITHUB_OUTPUT"
+      - name: Restore Ubuntu base image archive
+        id: image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/compatibility-image/ubuntu.tar
+          key: ubuntu-image-v1-${{ matrix.ubuntu }}-${{ runner.arch }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            ubuntu-image-v1-${{ matrix.ubuntu }}-${{ runner.arch }}-
+      - name: Load cached layers and check current Ubuntu image
+        env:
+          UBUNTU_RELEASE: ${{ matrix.ubuntu }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/compatibility-image"
+          image_archive="$RUNNER_TEMP/compatibility-image/ubuntu.tar"
+          if [ -f "$image_archive" ]; then docker image load -i "$image_archive"; fi
+          docker pull "ubuntu:$UBUNTU_RELEASE"
+          docker image save "ubuntu:$UBUNTU_RELEASE" -o "$image_archive"
+      - name: Save Ubuntu base image before running tests
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/compatibility-image/ubuntu.tar
+          key: ${{ steps.image-cache.outputs.cache-primary-key }}
+      - name: Restore distribution package downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/compatibility-debs/*.deb
+          key: apt-compat-v1-ubuntu-${{ matrix.ubuntu }}-${{ runner.arch }}-${{ hashFiles('scripts/compatibility/container.sh') }}-${{ steps.epoch.outputs.week }}
+          restore-keys: |
+            apt-compat-v1-ubuntu-${{ matrix.ubuntu }}-${{ runner.arch }}-${{ hashFiles('scripts/compatibility/container.sh') }}-
       - name: Test real distribution QEMU and GDB
         shell: bash
         run: |
           set -euo pipefail
           compatibility_output="$RUNNER_TEMP/compatibility-${{ matrix.ubuntu }}"
-          mkdir -p "$compatibility_output"
+          mkdir -p "$compatibility_output" "$RUNNER_TEMP/compatibility-debs"
           docker run --rm \
             --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/repo,readonly" \
             --mount "type=bind,src=$(readlink -f "$(command -v node)"),dst=/usr/local/bin/node,readonly" \
             --mount "type=bind,src=$compatibility_output,dst=/results" \
+            --mount "type=bind,src=$RUNNER_TEMP/compatibility-debs,dst=/var/cache/apt/archives" \
             -e COMPATIBILITY_LABEL="ubuntu-${{ matrix.ubuntu }}" \
             --workdir /repo "ubuntu:${{ matrix.ubuntu }}" \
             bash /repo/scripts/compatibility/container.sh \
