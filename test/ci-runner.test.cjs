@@ -63,17 +63,20 @@ test('failed host setup preserves its child exit, logs and JSON instead of repor
   assert.match(fs.readFileSync(summary, 'utf8'), /\| host-test \| FAIL \|/);
 });
 
-test('CI gate requires success and rejects failed, cancelled or skipped dependency jobs', () => {
-  const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8');
-  const gateJob = workflow.indexOf('\n  ci:\n');
-  assert(gateJob >= 0, 'CI result job must exist');
-  const gate = workflow.slice(gateJob).match(/node <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/);
-  assert(gate, 'CI result must expose its Node gate command');
-  for (const state of ['success', 'failure', 'cancelled', 'skipped']) {
-    const result = invoke(['-e', gate[1]], {
-      JOB_RESULTS: JSON.stringify({ quality: { result: 'success' }, integration: { result: state } })
-    });
-    assert.equal(result.status, state === 'success' ? 0 : 1, `${state}: ${result.stderr}`);
-    assert.match(result.stdout, new RegExp(`integration: ${state}`));
-  }
-});
+for (const [format, newline] of [['LF', '\n'], ['CRLF', '\r\n']]) {
+  test(`CI gate with ${format} requires success and rejects failed, cancelled or skipped jobs`, () => {
+    const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
+      .replace(/\r?\n/g, newline);
+    const gateJob = /\r?\n  ci:\r?\n/.exec(workflow)?.index ?? -1;
+    assert(gateJob >= 0, 'CI result job must exist');
+    const gate = workflow.slice(gateJob).match(/node <<'NODE'\r?\n([\s\S]*?)\r?\n\s+NODE/);
+    assert(gate, 'CI result must expose its Node gate command');
+    for (const state of ['success', 'failure', 'cancelled', 'skipped']) {
+      const result = invoke(['-e', gate[1]], {
+        JOB_RESULTS: JSON.stringify({ quality: { result: 'success' }, integration: { result: state } })
+      });
+      assert.equal(result.status, state === 'success' ? 0 : 1, `${state}: ${result.stderr}`);
+      assert.match(result.stdout, new RegExp(`integration: ${state}`));
+    }
+  });
+}
