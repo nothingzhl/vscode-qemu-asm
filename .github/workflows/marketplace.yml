@@ -1,0 +1,60 @@
+name: Marketplace publication
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to Marketplace (false only verifies and downloads the tested VSIX)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: marketplace-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve and verify the tested main artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_REF: ${{ github.ref }}
+          PUBLISH_SHA: ${{ github.sha }}
+        run: node scripts/ci/prepare-marketplace.cjs "$RUNNER_TEMP/marketplace"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketplace-candidate
+          path: ${{ runner.temp }}/marketplace/
+          if-no-files-found: error
+      - uses: actions/cache@v4
+        if: github.event_name == 'push' || inputs.publish
+        with:
+          path: ${{ runner.temp }}/vsce-npm
+          key: vsce-4.0.0-node22-${{ runner.os }}-${{ runner.arch }}
+      - name: Publish the same tested VSIX
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          npm_config_cache: ${{ runner.temp }}/vsce-npm
+          npm_config_prefer_offline: true
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo 'Add the Azure DevOps Marketplace Manage token as repository secret VSCE_PAT.' >&2
+            exit 1
+          fi
+          npm exec --yes --package=@vscode/vsce@4.0.0 -- vsce publish --packagePath "$RUNNER_TEMP/marketplace/qemu-asm.vsix"
