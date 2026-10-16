@@ -163,12 +163,17 @@ async function executableFixture(t, body) {
   await fs.writeFile(command, body, { mode: 0o755 });
   const children = [];
   const calls = [];
-  const host = { ...localHost, spawn(command, args, options) {
-    calls.push([...args]);
-    const child = spawn(process.execPath, [command, ...args], options);
-    children.push(child);
-    return child;
-  } };
+  const host = {
+    ...localHost,
+    // Native process-tree cleanup must not be interpreted as another Node fixture.
+    terminateProcessTree: localHost.terminateProcessTree.bind(localHost),
+    spawn(command, args, options) {
+      calls.push([...args]);
+      const child = spawn(process.execPath, [command, ...args], options);
+      children.push(child);
+      return child;
+    }
+  };
   const processes = new Processes(host);
   t.after(() => processes.dispose());
   return { processes, children, calls, project: project({ root, qemu: command, nasm: command, machineProfile: profile({ cpuModel: 'qemu32' }) }) };

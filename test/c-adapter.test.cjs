@@ -30,6 +30,7 @@ function client(t, options = {}) {
 }
 class ControlledGdb extends EventEmitter {
   commands = []; serial = 1; vars = 1; running = false; disposals = 0;
+  sourceFile = path.join(os.tmpdir(), 'C files, spaces', 'kernel.c');
   pauseStop = { reason: 'signal-received', 'signal-name': 'SIGINT', frame: { addr: '0xc0000020', func: 'kernel_main', line: '8' } };
   failAddress;
   async launch() { this.emit('stopped', { reason: 'entry' }); }
@@ -41,9 +42,9 @@ class ControlledGdb extends EventEmitter {
     if (command.startsWith('-break-insert')) {
       if (this.failAddress && command.includes(this.failAddress)) throw new Error('hardware insertion rejected');
       const line = Number(/--line (\d+)$/.exec(command)?.[1] ?? 7);
-      results = { bkpt: { number: String(this.serial++), addr: `0x${(0xc0000000 + line * 4).toString(16)}`, line: String(line + 1), fullname: '/tmp/C files, spaces/kernel.c' } };
+      results = { bkpt: { number: String(this.serial++), addr: `0x${(0xc0000000 + line * 4).toString(16)}`, line: String(line + 1), fullname: this.sourceFile } };
     } else if (command.startsWith('-break-watch')) results = { wpt: { number: String(this.serial++) } };
-    else if (command.startsWith('-stack-list-frames')) results = { stack: [{ frame: { level: '0', addr: '0xc0000020', func: 'nested', fullname: '/tmp/C files, spaces/kernel.c', line: '8' } }, { frame: { level: '1', addr: '0xc0000040', func: 'kernel_main', fullname: '/tmp/C files, spaces/kernel.c', line: '16' } }] };
+    else if (command.startsWith('-stack-list-frames')) results = { stack: [{ frame: { level: '0', addr: '0xc0000020', func: 'nested', fullname: this.sourceFile, line: '8' } }, { frame: { level: '1', addr: '0xc0000040', func: 'kernel_main', fullname: this.sourceFile, line: '16' } }] };
     else if (command.startsWith('-stack-list-variables')) results = { variables: [{ name: 'local', type: 'int', value: '42' }, { name: 'arg', type: 'int', arg: '1', value: '5' }, { name: 'pair', type: 'struct Pair' }] };
     else if (command.startsWith('-var-create')) {
       const expression = JSON.parse(command.slice(command.indexOf(' - * ') + 5));
@@ -66,6 +67,7 @@ async function configured(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'c adapter unit ')), elf = path.join(root, 'kernel.elf');
   await fs.writeFile(elf, Buffer.alloc(52)); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const runtime = new ControlledGdb();
+  runtime.sourceFile = path.join(root, 'C files, spaces', 'kernel.c');
   const c = client(t, { getProject: async () => ({ root, debug: { elf, gdb: 'unused', entry: 'kernel_main' } }), runtimeFactory: () => runtime, buildProject: async () => ({ units: [], imageBytes: 512 }) });
   assert.equal((await c.request('launch')).success, true);
   assert.equal((await c.request('configurationDone')).success, true);
@@ -88,10 +90,15 @@ test('untrusted C launch and stale UI reads never read a project or target', asy
 });
 test('source breakpoint reports actual DWARF line and uses separate source/line options for commas', async t => {
   const c = await configured(t);
-  const response = await c.request('setBreakpoints', { source: { path: '/tmp/C files, spaces/kernel.c' }, breakpoints: [{ line: 20 }, { line: 21, condition: 'x' }, { line: 0 }] });
+  const source = c.runtime.sourceFile;
+  await fs.mkdir(path.dirname(source)); await fs.writeFile(source, 'int kernel_main(void) { return 0; }\n');
+  const realSource = await fs.realpath(source);
+  c.runtime.sourceFile = process.platform === 'win32' ? realSource.toLowerCase() : realSource;
+  const response = await c.request('setBreakpoints', { source: { path: source }, breakpoints: [{ line: 20 }, { line: 21, condition: 'x' }, { line: 0 }] });
   assert.equal(response.success, true); assert.equal(response.body.breakpoints[0].line, 21); assert.equal(response.body.breakpoints[0].verified, true);
+  assert.equal(response.body.breakpoints[0].source.path, c.runtime.sourceFile);
   assert.equal(response.body.breakpoints[1].verified, false); assert.equal(response.body.breakpoints[2].verified, false);
-  assert(c.runtime.commands.some(command => command === '-break-insert -h --source "/tmp/C files, spaces/kernel.c" --line 20'));
+  assert(c.runtime.commands.some(command => command === `-break-insert -h --source ${JSON.stringify(c.runtime.sourceFile)} --line 20`));
   assert(!c.runtime.commands.some(command => command.includes('--line 21')));
 });
 test('caller scopes and evaluation use the selected DWARF frame; children expose correct expressions', async t => {
