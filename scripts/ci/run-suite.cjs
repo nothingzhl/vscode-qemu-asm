@@ -15,6 +15,7 @@ const suites = {
   full: [...native, 'c-machine-integration', 'c-source-integration', 'dependency-integration', 'machine-profiles-integration'],
   native,
   'os-project': ['os-project-integration', 'os-project-host'],
+  tilck: ['tilck-baseline', 'tilck-integration', 'tilck-host'],
   host: ['host-test']
 };
 const repository = path.resolve(__dirname, '../..');

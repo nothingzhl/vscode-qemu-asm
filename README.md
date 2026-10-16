@@ -54,6 +54,8 @@ sudo apt-get install nasm qemu-system-x86
 
 看不到这些结果时，按[快速开始](docs/QUICKSTART.md)逐步核对，或查看[常见问题](docs/TROUBLESHOOTING.md)。已有工程可从[真实 OS 工程接入](docs/OS_PROJECT.md)开始，或查看[调试 C 内核](docs/DEBUGGING.md#调试-c-内核)。
 
+已有工程接入示例包括 DreamOS，以及使用 CMake 和高地址分页内核的 [Tilck](docs/TILCK_VALIDATION.md)。两者保留各自的构建与链接布局，使用外部构建、ISO、ELF 符号和源码映射配置。
+
 ## 配置
 
 项目根目录的最小 `qemu-asm.json`：

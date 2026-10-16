@@ -42,6 +42,8 @@ npm test
 | `npm run test:c-source` | ELF/DWARF、GDB 源码步进、变量、帧与分页 |
 | `npm run test:os-project` | 固定版本 DreamOS 的原生构建/启动基线、ISO 源码调试、分页、重启与失败阻断 |
 | `npm run test:os-project:host` | 同一真实工程的 VS Code 调试接入 |
+| `npm run test:tilck:baseline` | 固定版本 Tilck 的独立 QEMU/GDB 构建后基线，见[环境与边界](TILCK_VALIDATION.md) |
+| `npm run test:tilck`、`npm run test:tilck:host` | Tilck 高地址 ISO 调试、分页、变量、修改后重启；后者运行 VS Code 宿主 |
 | `npm run test:dependencies` | 统一工具解析、按需依赖、能力证据与会话隔离 |
 | `npm run test:profiles` | 实际 RAM/CPU 配置、NASM/C 启动与重启、显示资源、无效 CPU 和清理 |
 

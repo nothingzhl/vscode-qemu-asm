@@ -1,0 +1,83 @@
+name: Tilck OS acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tilck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'run-tilck')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      TILCK_SOURCE: ${{ github.workspace }}/artifacts/tilck-source
+      TCROOT: ${{ github.workspace }}/artifacts/tilck-toolchain
+      GCC_TC_VER: '13.3.0'
+      RUNNING_IN_CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: vvaltchev/tilck
+          ref: 01dacaa51a074474a4e5491fc80addfe98956500
+          path: artifacts/tilck-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: ./.github/actions/setup-tools
+        with:
+          linux-packages: >-
+            nasm qemu-system-x86 xvfb xauth gdb gcc g++ binutils build-essential
+            ca-certificates ruby ruby-dev ruby-minitest cmake git wget curl
+            xz-utils bzip2 file patch python3 bison flex pkg-config mtools
+            dosfstools gdisk libncurses-dev zlib1g-dev rsync bc
+            grub-pc-bin grub-common xorriso
+            libasound2t64 libgbm1 libgtk-3-0t64 libnss3
+      - uses: actions/cache/restore@v4
+        id: tools
+        with:
+          path: artifacts/tilck-toolchain
+          key: tilck-tools-v1-ubuntu24-x64-gcc13.3-01dacaa51-${{ hashFiles('artifacts/tilck-source/scripts/pkgmgr/**', 'artifacts/tilck-source/other/pkg*', 'artifacts/tilck-source/other/host_pkg_versions') }}
+      - name: Prepare the upstream default tools
+        working-directory: artifacts/tilck-source
+        run: ./scripts/build_toolchain -n
+      - uses: actions/cache/save@v4
+        if: steps.tools.outputs.cache-hit != 'true'
+        with:
+          path: artifacts/tilck-toolchain
+          key: ${{ steps.tools.outputs.cache-primary-key }}
+      - name: Configure and build the upstream Debug kernel
+        working-directory: artifacts/tilck-source
+        run: |
+          ./scripts/cmake_run -DCMAKE_BUILD_TYPE=Debug -DBOOTLOADER_EFI=0 -DBOOT_INTERACTIVE=0 -DMOD_acpi=0
+          cmake --build build --parallel 2
+      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-vscode
+        with:
+          version: '1.96.4'
+      - run: npm run compile
+      - name: Native baseline, ISO adapter and VS Code host
+        run: xvfb-run -a node scripts/ci/run-suite.cjs --suite tilck --output artifacts/tilck-results
+      - name: Package and independently install VSIX
+        env:
+          OS_PROJECT_KIND: tilck
+        run: |
+          npm exec --yes --package=@vscode/vsce@4.0.0 -- vsce package --githubBranch "$GITHUB_SHA" --out "$RUNNER_TEMP/tilck.vsix"
+          set -o pipefail
+          xvfb-run -a node scripts/os-project-installed.cjs "$RUNNER_TEMP/tilck.vsix" 2>&1 | tee artifacts/tilck-results/installed.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tilck-evidence
+          path: artifacts/tilck-results/
+          if-no-files-found: warn

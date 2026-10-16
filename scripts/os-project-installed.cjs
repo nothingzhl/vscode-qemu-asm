@@ -9,7 +9,9 @@ async function main() {
   const vsix = process.argv[2];
   assert(vsix && process.argv.length === 3, 'Usage: node scripts/os-project-installed.cjs PATH_TO_VSIX');
   assert(process.env.VSCODE_EXECUTABLE_PATH, 'Set VSCODE_EXECUTABLE_PATH');
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'DreamOS installed, '));
+  assert(process.env.OS_PROJECT_KIND === undefined || ['dreamos', 'tilck'].includes(process.env.OS_PROJECT_KIND), 'OS_PROJECT_KIND must be dreamos or tilck');
+  const tilck = process.env.OS_PROJECT_KIND === 'tilck';
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), tilck ? 'Tilck installed, ' : 'DreamOS installed, '));
   try {
     const extensions = path.join(temp, 'extensions');
     const [cli, ...args] = resolveCliArgsFromVSCodeExecutablePath(process.env.VSCODE_EXECUTABLE_PATH);
@@ -19,12 +21,12 @@ async function main() {
     const candidates = (await fs.readdir(extensions)).filter(name => /^nothingzhl\.vscode-qemu-asm-/.test(name));
     assert.equal(candidates.length, 1);
     const extension = await fs.realpath(path.join(extensions, candidates[0]));
-    const child = spawn(process.execPath, [path.join(__dirname, 'os-project-host.cjs')], {
+    const child = spawn(process.execPath, [path.join(__dirname, tilck ? 'tilck-host.cjs' : 'os-project-host.cjs')], {
       env: { ...process.env, QEMU_ASM_VSIX_EXTENSION: extension }, stdio: 'inherit', shell: false
     });
     await new Promise((resolve, reject) => {
       child.once('error', reject);
-      child.once('close', (code, signal) => code === 0 ? resolve() : reject(new Error(`Installed DreamOS test failed: ${code ?? signal}`)));
+      child.once('close', (code, signal) => code === 0 ? resolve() : reject(new Error(`Installed ${tilck ? 'Tilck' : 'DreamOS'} test failed: ${code ?? signal}`)));
     });
   } finally { await fs.rm(temp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 }
