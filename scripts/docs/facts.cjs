@@ -4,7 +4,7 @@ const path = require('node:path');
 // Historical validation reports retain the commands/configuration of their release.
 const CURRENT_GUIDES = [
   'README.md', 'docs/README.md', 'docs/QUICKSTART.md', 'docs/CONFIGURATION.md',
-  'docs/DEBUGGING.md', 'docs/TROUBLESHOOTING.md', 'docs/DEVELOPMENT.md'
+  'docs/DEBUGGING.md', 'docs/TROUBLESHOOTING.md', 'docs/DEVELOPMENT.md', 'docs/OS_PROJECT.md'
 ];
 
 function jsonBlocks(text) {

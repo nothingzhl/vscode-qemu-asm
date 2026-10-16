@@ -1,6 +1,6 @@
 # 当前代码结构
 
-分支：`refactor/capability-architecture`。本清单对应当前生产文件，包含本轮变量与显示性能整理，不包含生成的 dist 或 node_modules。
+本文按职责导航生产代码，不绑定开发分支；文件清单应随相关代码改动更新，不包含生成的 `dist/` 或 `node_modules/`。
 
 | 目录 | 职责 |
 | --- | --- |
@@ -161,11 +161,13 @@ src/
 │   ├── templates/
 │   │   ├── boot.ts
 │   │   └── protected.ts
+│   ├── artifact.ts
 │   ├── build.ts
 │   ├── builder.ts
 │   ├── config.ts
 │   ├── create.ts
 │   ├── diagnostics.ts
+│   ├── iso.ts
 │   └── model.ts
 ├── core.ts
 └── extension.ts

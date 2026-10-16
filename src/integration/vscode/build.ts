@@ -38,5 +38,5 @@ export async function compileProject(
       ]);
     }
   }
-  output.appendLine(`构建成功：${p.image}`);
+  output.appendLine(`${p.buildMode === 'existing' ? '已验证现有产物' : '构建成功'}：${p.image}`);
 }

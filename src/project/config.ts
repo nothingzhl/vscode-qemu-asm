@@ -42,8 +42,20 @@ export function resolveProject(
     const relative = path.relative(root, file);
     return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
   };
+  const buildMode = config.build === false ? 'existing' : undefined;
+  let boot: Project['boot'];
+  if (config.boot !== undefined) {
+    if (!config.boot || typeof config.boot !== 'object' || Array.isArray(config.boot))
+      throw new Error('boot 必须包含 type: floppy 或 iso');
+    const value = config.boot as Record<string, unknown>;
+    if (typeof value.type !== 'string' || !['floppy', 'iso'].includes(value.type) || Object.keys(value).some(key => key !== 'type'))
+      throw new Error('boot 仅支持 type: floppy 或 iso');
+    boot = { type: value.type as 'floppy' | 'iso' };
+  }
+  if (boot?.type === 'iso' && config.build === undefined)
+    throw new Error('ISO 引导需要外部 build 命令或 build: false 使用已有产物');
   let externalBuild: ExternalBuild | undefined;
-  if (config.build !== undefined) {
+  if (config.build !== undefined && config.build !== false) {
     if (!config.build || typeof config.build !== 'object' || Array.isArray(config.build))
       throw new Error('build 必须包含 command 与可选的 args、cwd、timeout');
     const value = config.build as Record<string, unknown>;
@@ -125,7 +137,7 @@ export function resolveProject(
       lba: Number(stage.lba)
     };
   });
-  if (externalBuild && stages.length) throw new Error('外部 build 自行生成镜像，不能同时配置 NASM stages');
+  if ((externalBuild || buildMode) && stages.length) throw new Error('外部构建或已有产物模式不能同时配置 NASM stages');
   const relativeImage = path.relative(root, image);
   if (
     [source, ...stages.map((stage) => stage.source)].includes(image) ||
@@ -145,6 +157,8 @@ export function resolveProject(
     nasm: tool(tools.nasm, 'nasm'),
     qemu: tool(tools.qemu, 'qemu-system-i386'),
     qemuArgs: [...args],
+    ...(boot ? { boot } : {}),
+    ...(buildMode ? { buildMode } : {}),
     ...(externalBuild ? { build: externalBuild } : {}),
     ...(debug ? { debug } : {})
   };

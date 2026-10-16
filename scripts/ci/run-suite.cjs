@@ -14,6 +14,7 @@ const native = [
 const suites = {
   full: [...native, 'c-machine-integration', 'c-source-integration', 'dependency-integration'],
   native,
+  'os-project': ['os-project-integration', 'os-project-host'],
   host: ['host-test']
 };
 const repository = path.resolve(__dirname, '../..');

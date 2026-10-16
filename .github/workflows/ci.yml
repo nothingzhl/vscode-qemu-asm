@@ -179,10 +179,62 @@ jobs:
           path: artifacts/installed/
           if-no-files-found: warn
 
+  os-project:
+    name: Real DreamOS ISO and installed product
+    needs: [quality, package]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DREAMOS_SOURCE: ${{ github.workspace }}/artifacts/dreamos-source
+      VSCODE_VERSION: '1.96.4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the reviewed upstream revision
+        uses: actions/checkout@v4
+        with:
+          repository: dreamos82/Dreamos
+          ref: 85393cbcdeb9ca0bafb84e9631c2c7f21be76141
+          path: artifacts/dreamos-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: ./.github/actions/setup-tools
+      - name: Install upstream ISO build tool
+        run: sudo apt-get install -y --no-install-recommends genisoimage
+      - run: npm ci
+      - run: npm run compile
+      - name: Prepare fixed VS Code host
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          require('@vscode/test-electron').downloadAndUnzipVSCode(process.env.VSCODE_VERSION).then(executable => {
+            fs.appendFileSync(process.env.GITHUB_ENV, `VSCODE_EXECUTABLE_PATH=${executable}\n`);
+          }).catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+      - name: Original build baseline and development host
+        run: xvfb-run -a node scripts/ci/run-suite.cjs --suite os-project --output artifacts/os-project
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension-vsix
+          path: ${{ runner.temp }}/package
+      - name: Independently installed VSIX with the same real OS
+        run: |
+          set -o pipefail
+          xvfb-run -a node scripts/os-project-installed.cjs "$RUNNER_TEMP/package/qemu-asm.vsix" 2>&1 | tee artifacts/os-project/installed.log
+      - name: Upload real OS evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-project-dreamos
+          path: artifacts/os-project/
+          if-no-files-found: warn
+
   ci:
     name: CI result
     if: always()
-    needs: [workflow-lint, quality, integration, host, package, installed]
+    needs: [workflow-lint, quality, integration, host, package, installed, os-project]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     env:

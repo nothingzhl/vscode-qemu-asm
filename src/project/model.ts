@@ -23,6 +23,9 @@ export interface ElfDebugConfiguration {
   sourceMap?: Record<string, string>;
   entry?: string;
 }
+export interface BootConfiguration {
+  type: 'floppy' | 'iso';
+}
 export interface Project {
   workspace: string;
   root: string;
@@ -32,6 +35,9 @@ export interface Project {
   nasm: string;
   qemu: string;
   qemuArgs: string[];
+  boot?: BootConfiguration;
+  /** Explicit reuse of an artifact; absence preserves the legacy NASM build. */
+  buildMode?: 'existing';
   build?: ExternalBuild;
   debug?: ElfDebugConfiguration;
 }

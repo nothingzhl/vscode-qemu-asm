@@ -15,3 +15,5 @@ docs/**
 artifacts/**
 coverage/**
 .c8rc.json
+
+examples/**

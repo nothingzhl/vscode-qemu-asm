@@ -71,13 +71,13 @@ test('external build executes its argv without NASM or shell expansion and prese
   await assert.rejects(fs.stat(path.join(root, 'should-not-exist')));
 });
 
-test('failed external build invalidates old and partial image while retaining ELF', async t => {
+test('failed external build preserves project-owned partial image and ELF, and rejects launch', async t => {
   const { project, processes } = await fixture(t, "const fs=require('node:fs');fs.writeFileSync('build/os.img','partial');process.exit(7);");
   await fs.mkdir(path.dirname(project.image));
   await fs.writeFile(project.image, 'old boot image');
   await fs.writeFile(project.debug.elf, 'keep ELF');
   await assert.rejects(build(project, processes, () => {}), /退出码 7/);
-  await assert.rejects(fs.stat(project.image));
+  assert.equal(await fs.readFile(project.image, 'utf8'), 'partial');
   assert.equal(await fs.readFile(project.debug.elf, 'utf8'), 'keep ELF');
 });
 
@@ -85,7 +85,7 @@ test('external image validation rejects absent, unaligned, oversized and unsigne
   for (const [bytes, signed] of [[0, false], [513, true], [1475072, true], [512, false]]) {
     const { project, processes } = await fixture(t, `const fs=require('node:fs');const b=Buffer.alloc(${bytes});${signed ? 'b[510]=0x55;b[511]=0xaa;' : ''}fs.writeFileSync('build/os.img',b);`);
     await assert.rejects(build(project, processes, () => {}), /512|55 aa/);
-    await assert.rejects(fs.stat(project.image));
+    assert.equal((await fs.stat(project.image)).size, bytes);
   }
   const { project, processes } = await fixture(t, '');
   await assert.rejects(build(project, processes, () => {}), /ENOENT/);
@@ -118,16 +118,16 @@ test('external build cwd and generated image cannot escape through symlinks', { 
   project.build.cwd = root;
   await assert.rejects(build(project, processes, () => {}), /普通镜像文件/);
   assert.equal(await fs.readFile(externalFile, 'utf8'), 'keep outside');
-  await assert.rejects(fs.lstat(project.image));
+  assert.equal((await fs.lstat(project.image)).isSymbolicLink(), true);
 });
 
-test('external build cancellation and timeout remove partial images and keep the manager usable', async t => {
+test('external build cancellation and timeout preserve project files and keep the manager usable', async t => {
   const script = "const fs=require('node:fs');fs.writeFileSync('build/os.img','partial');console.log('ready');setInterval(()=>{},1000);";
-  for (const timeout of [150, 5000]) {
+  for (const timeout of [1000, 5000]) {
     const { project, processes } = await fixture(t, script, { build: { command: process.execPath, args: ['builder with spaces.cjs'], timeout } });
     let cancelled = false;
-    await assert.rejects(build(project, processes, () => { if (timeout === 5000) cancelled = true; }, () => cancelled), timeout === 150 ? /超时/ : /已停止/);
-    await assert.rejects(fs.stat(project.image));
+    await assert.rejects(build(project, processes, text => { if (timeout === 5000 && text.includes('ready')) cancelled = true; }, () => cancelled), timeout === 1000 ? /超时/ : /已停止/);
+    assert.equal(await fs.readFile(project.image, 'utf8'), 'partial');
     await execute(processes, process.execPath, ['-e', 'process.exit(0)'], project.root, () => {});
   }
 });

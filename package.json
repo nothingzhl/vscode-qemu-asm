@@ -50,7 +50,9 @@
     "test:performance:resources": "npm run compile && node --expose-gc scripts/performance/resources.cjs --enforce --output artifacts/performance/resources.json",
     "test:performance:display": "npm run compile && node --expose-gc scripts/performance/real-display.cjs --enforce --output artifacts/performance/real-display.json",
     "test:compatibility": "npm run compile && node scripts/compatibility/runner.cjs --output artifacts/compatibility",
-    "test:ci": "npm run compile && node scripts/ci/run-suite.cjs --suite full --output artifacts/integration"
+    "test:ci": "npm run compile && node scripts/ci/run-suite.cjs --suite full --output artifacts/integration",
+    "test:os-project": "npm run compile && node scripts/os-project-integration.cjs",
+    "test:os-project:host": "npm run compile && node scripts/os-project-host.cjs"
   },
   "contributes": {
     "commands": [
