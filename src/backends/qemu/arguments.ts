@@ -1,4 +1,5 @@
 import type { Project } from '../../project/model';
+import { localHost, type HostPlatform } from '../../platform/host';
 
 type MachineValueSource = 'profile' | 'qemuArgs' | 'qemu-default';
 
@@ -75,7 +76,18 @@ export function formatQemuLaunchConfiguration(configuration: QemuLaunchConfigura
   ].join('\n');
 }
 
-export function qemuArguments(project: Project): string[] {
+/** Generated paths are relative to project.root; launch QEMU with that working directory. */
+export function qemuArguments(
+  project: Project,
+  host: { identity: Pick<HostPlatform['identity'], 'platform'>; paths: HostPlatform['paths'] } = localHost
+): string[] {
+  let image = project.image;
+  if (host.identity.platform === 'win32') {
+    // Some Windows builds cannot decode Unicode argv, but inherit a Unicode cwd.
+    const absolute = host.paths.resolve(project.root, image);
+    const relative = host.paths.relative(project.root, absolute);
+    image = host.paths.isAbsolute(relative) ? absolute : `.${host.paths.sep}${relative}`;
+  }
   // QEMU keyval syntax uses doubled commas for literal filename commas.
   return [
     '-accel',
@@ -92,7 +104,7 @@ export function qemuArguments(project: Project): string[] {
     '-boot',
     'a',
     '-drive',
-    `file=${project.image.replace(/,/g, ',,')},format=raw,if=floppy,readonly=on`,
+    `file=${image.replace(/,/g, ',,')},format=raw,if=floppy,readonly=on`,
     ...qemuMachineArguments(project)
   ];
 }

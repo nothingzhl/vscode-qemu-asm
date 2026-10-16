@@ -15,7 +15,7 @@ const { MARKER, createProject, resolveProject, build, Processes, qemuArguments }
   console.log('PASS: NASM image = 512 bytes, signature = 55 aa');
   let output = ''; let success;
   const marker = new Promise(resolve=>{success=resolve;});
-  const run = runner.start(p.qemu,qemuArguments(p),root,text=>{ output += text; process.stdout.write(text); if(output.includes(MARKER)) success(); });
+  const run = runner.start(p.qemu,qemuArguments(p,runner.host),p.root,text=>{ output += text; process.stdout.write(text); if(output.includes(MARKER)) success(); });
   await run.ready;
   await Promise.race([marker,run.done.then(()=>{throw new Error('QEMU exited before success marker');}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('QEMU serial marker timeout (15s)')),15000);})]);
   await runner.stop(); await run.done;

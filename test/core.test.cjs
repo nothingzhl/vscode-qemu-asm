@@ -14,7 +14,7 @@ test('configuration resolves selected workspace, project and spaced tool paths',
  assert.equal(resolveProject(second,'.',{}).root,second);
  for (const data of [null,[],{image:'../outside'},{image:'boot.asm'},{image:'qemu-asm.json'}]) assert.throws(()=>resolveProject('/w','.',data));
  for (const qemuArgs of ['-m',['-daemonize'],['-drive','file=other'],['-m'],['-m','-daemonize']]) assert.throws(()=>resolveProject('/w','.',{},{qemuArgs}));
- assert(qemuArguments({...p,image:'/a,b c/boot.img'}).includes('file=/a,,b c/boot.img,format=raw,if=floppy,readonly=on'));
+ assert(qemuArguments({...p,image:'/a,b c/boot.img'},{identity:{platform:'linux'},paths:path.posix}).includes('file=/a,,b c/boot.img,format=raw,if=floppy,readonly=on'));
 });
 test('project creation preserves existing files and rolls back only newly created files', async t => {
  const root = await temporary(t); await fs.writeFile(path.join(root,'qemu-asm.json'),'keep');

@@ -37,7 +37,7 @@ export class QemuVirtualMachine implements VirtualMachine {
     await validateProfileCpu(this.project, this.processes, () => this.disposed);
     const endpoint = options.debug ? { host: '127.0.0.1', port: await freePort() } : undefined;
     if (this.disposed) throw new Error('虚拟机启动已取消');
-    const args = [...qemuArguments(this.project), ...this.attachments];
+    const args = [...qemuArguments(this.project, this.processes.host), ...this.attachments];
     if (options.paused) args.push('-S');
     if (endpoint) args.push('-gdb', `tcp:${endpoint.host}:${endpoint.port}`);
     const run = this.processes.start(this.project.qemu, args, this.project.root, this.log);

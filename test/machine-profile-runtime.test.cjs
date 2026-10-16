@@ -24,6 +24,7 @@ function boundary(help = 'Available CPUs:\n  qemu32  QEMU Virtual CPU\n  486-v1\
   const calls = [];
   let disposed = 0;
   return {
+    host: localHost,
     calls,
     get disposed() { return disposed; },
     start(command, args, cwd, log) {
@@ -42,9 +43,36 @@ test('legacy machine arguments retain order, duplicates and caller isolation', (
   assert.deepEqual(args, config.qemuArgs);
   args[1] = '128M';
   assert.equal(config.qemuArgs[1], '16M');
-  const full = qemuArguments(config);
+  const full = qemuArguments(config, { identity: { platform: 'linux' }, paths: path.posix });
   assert.equal(full[full.indexOf('-drive') + 1], 'file=image,,with comma.img,format=raw,if=floppy,readonly=on');
   assert.deepEqual(full.slice(-8), config.qemuArgs);
+});
+
+test('Windows drive arguments use the project cwd, escape commas and preserve cross-drive paths', () => {
+  const host = { identity: { platform: 'win32' }, paths: path.win32 };
+  const root = 'C:\\Users\\开发者\\project with spaces';
+  for (const [image, expected] of [
+    [path.win32.join(root, '-boot, image.img'), '.\\-boot,, image.img'],
+    ['build\\boot.img', '.\\build\\boot.img'],
+    ['D:\\images\\boot, image.img', 'D:\\images\\boot,, image.img'],
+    ['\\\\server\\share\\boot.img', '\\\\server\\share\\boot.img']
+  ]) {
+    const args = qemuArguments(project({ root, image }), host);
+    assert.equal(args[args.indexOf('-drive') + 1], `file=${expected},format=raw,if=floppy,readonly=on`);
+  }
+});
+
+test('the VM generates image arguments for its injected process host and matching working directory', async t => {
+  const processes = boundary();
+  processes.host = { identity: { platform: 'win32' }, paths: path.win32 };
+  const config = project({ root: 'C:\\中文 project', image: 'C:\\中文 project\\build\\boot, disk.img' });
+  const machine = new QemuVirtualMachine(config, processes, () => {});
+  t.after(() => machine.dispose());
+  await machine.start();
+  const call = processes.calls[0];
+  assert.equal(call.cwd, config.root);
+  assert.equal(call.args[call.args.indexOf('-drive') + 1], 'file=.\\build\\boot,, disk.img,format=raw,if=floppy,readonly=on');
+  assert.equal(processes.calls.length, 1);
 });
 
 test('profile overrides remove every matching legacy option and preserve untouched resource pairs', () => {

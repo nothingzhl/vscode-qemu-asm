@@ -5,6 +5,7 @@ const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { inflateSync } = require('node:zlib');
 const { QemuScreen } = require('../dist/display/screen');
+const { qemuArguments } = require('../dist/backends/qemu/arguments');
 
 function pixels(frame) {
   const chunks = [];
@@ -90,7 +91,9 @@ dw 0xaa55
     const statuses = [];
     screen.on('status', event => statuses.push(event));
     let output = ''; let stderr = '';
-    child = spawn(process.env.QEMU_PATH || 'qemu-system-i386', ['-accel', 'tcg', '-display', 'none', '-monitor', 'none', '-serial', 'none', '-no-reboot', '-no-shutdown', '-debugcon', 'stdio', '-S', '-drive', `file=${image},format=raw,if=floppy`, ...screen.args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const launchArgs = qemuArguments({ root, image, qemuArgs: [] });
+    const drive = launchArgs[launchArgs.indexOf('-drive') + 1];
+    child = spawn(process.env.QEMU_PATH || 'qemu-system-i386', ['-accel', 'tcg', '-display', 'none', '-monitor', 'none', '-serial', 'none', '-no-reboot', '-no-shutdown', '-debugcon', 'stdio', '-S', '-drive', drive, ...screen.args], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', data => output += data.toString('ascii'));
     child.stderr.on('data', data => stderr += data.toString('utf8'));
     exit = new Promise(resolve => {
