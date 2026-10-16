@@ -2,6 +2,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
+async function artifacts(root) {
+  const config = JSON.parse(await fs.readFile(path.join(root, 'qemu-asm.json'), 'utf8'));
+  return Promise.all([config.image, config.debug.elf].map(async file =>
+    createHash('sha256').update(await fs.readFile(path.resolve(root, file))).digest('hex')));
+}
 const numeric = value => Number(/0x[\da-f]+|^-?\d+/i.exec(String(value))?.[0]);
 async function top(client) { return (await client.request('stackTrace', { threadId: 1 })).stackFrames[0]; }
 async function scalar(client, expression) {
@@ -62,12 +68,30 @@ async function exercise(client, root, restart) {
   assert(ownGdt.entries.some(entry => entry.present));
   console.log('PASS: real kernel initializes its GDT/IDT and paging; live PDE/PTE translation agrees with virtual and physical code bytes');
   if (!restart) return;
+  const before = await artifacts(root);
+  const changed = original.replace('unsigned int module_end;', 'unsigned int module_end = 0x12345678;');
+  assert.notEqual(changed, original, 'pinned upstream edit anchor must exist');
   try {
-    await fs.writeFile(source, original.replace('unsigned int module_end;', 'unsigned int module_end = 0x12345678;'));
+    await fs.writeFile(source, changed);
     await client.request('setBreakpoints', { source: { path: source }, breakpoints: [] });
     assert.equal((await client.stoppedAfter('restart', {})).reason, 'entry');
     assert.equal(await scalar(client, 'module_end'), 0x12345678, 'restart must rebuild and load the changed kernel, not an old ISO');
-    console.log('PASS: editing the real kernel and restarting loads the newly built ISO and ELF');
+    const after = await artifacts(root);
+    for (const [index, name] of ['ISO', 'ELF'].entries())
+      assert.notEqual(after[index], before[index], `${name} must change after editing the kernel`);
+    const rebound = await client.request('setBreakpoints', { source: { path: source }, breakpoints: [{ line }] });
+    assert.equal(rebound.breakpoints[0].verified, true);
+    assert.equal((await client.stoppedAfter('continue')).reason, 'breakpoint');
+    frame = await top(client);
+    assert.equal(frame.source.path, source); assert.equal(frame.line, line);
+    assert((await scalar(client, 'module_end')) > (await scalar(client, 'module_start')));
+    console.log('PASS: edited kernel changes ISO and ELF; restarted session hits a C breakpoint and reads live variables');
+    await fs.writeFile(source, original);
+    await client.request('setBreakpoints', { source: { path: source }, breakpoints: [] });
+    assert.equal((await client.stoppedAfter('restart', {})).reason, 'entry');
+    assert.match((await top(client)).name, /main_loop/);
+    assert.equal(await scalar(client, 'module_end'), 0, 'restoring source must discard the previous initialized value');
+    console.log('PASS: restoring source and restarting again loads the restored kernel without stale session state');
   } finally { await fs.writeFile(source, original); }
 }
 module.exports = { exercise, top, scalar, numeric };
