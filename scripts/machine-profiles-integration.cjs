@@ -111,7 +111,7 @@ async function exerciseAssembly(temporary, tools = {}) {
     const cpus = await screen.client.command('query-hotpluggable-cpus');
     assert.equal(cpus[0].type, 'pentium3-i386-cpu', 'QMP must report the actual selected CPU implementation');
     const frame = (await client.request('stackTrace', { threadId: 1 })).stackFrames[0];
-    assert.equal(frame.source.path, path.join(root, 'boot.asm'));
+    assert.equal(await fs.realpath(frame.source.path), await fs.realpath(path.join(root, 'boot.asm')));
     const report = await client.request('qemuAsm.dependencyReport');
     assert.equal(report.scope.backend, 'nasm-rsp');
     await client.request('disconnect', { terminateDebuggee: true });

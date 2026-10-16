@@ -176,11 +176,11 @@ or eax,1
 mov cr0,eax
 jmp dword 8:0x10020
 payload:
-jmp dword high_next
+jmp near dword high_next
 high_next:
-jmp dword high_idle
+jmp near dword high_idle
 high_idle:
-jmp dword high_idle
+jmp near dword high_idle
 payload_end:
 align 8
 gdt: dq 0
@@ -192,6 +192,11 @@ times 510-($-$$) db 0
 dw 0xaa55
 `);
     await build(project, processes, text => log.push(text));
+    // NASM 3 can shorten an unqualified dword jump; this case requires rel32
+    // branches to retain full EIP above 64KiB and the exact six-byte offsets.
+    const highImage = await fs.readFile(project.image);
+    assert.notEqual(highImage.indexOf(Buffer.from('66e90000000066e90000000066e9faffffff', 'hex')), -1,
+      'Protected16 payload must contain three six-byte operand32 near jumps');
     runtime = new DebugRuntime(project, text => log.push(text));
     await stopped(runtime, () => runtime.launch(), 'entry');
     await runtime.setBreakpoints([0x10020, 0x10026]);

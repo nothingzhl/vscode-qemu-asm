@@ -53,7 +53,7 @@ exports.run = async function() {
     const extension = vscode.extensions.getExtension('nothingzhl.vscode-qemu-asm'); assert(extension); await extension.activate();
     if (process.env.QEMU_ASM_VSIX_EXTENSION) {
       assert.equal(await fs.realpath(extension.extensionPath), await fs.realpath(extensionRoot));
-      assert.equal(path.dirname(__filename), path.join(process.env.QEMU_ASM_VSIX_TEST_ROOT, 'external-tests'));
+      assert.equal(await fs.realpath(path.dirname(__filename)), await fs.realpath(path.join(process.env.QEMU_ASM_VSIX_TEST_ROOT, 'external-tests')));
       assert.equal(core, require(path.join(extension.extensionPath, 'dist', 'core.js')), 'test must observe installed product code');
     }
     const root = path.join(folder.uri.fsPath, 'NASM dependency project with spaces, and commas'); await core.createProject(root);
@@ -97,7 +97,7 @@ exports.run = async function() {
     assert.equal(runtime.scope.tools.qemu, qemuRun.command);
     assert(!qemuRun.args.includes('-qmp'), 'disabled display must not allocate QMP display resources');
     const stack = (await request('stackTrace', { threadId: 1 })).stackFrames;
-    assert.equal(path.resolve(stack[0].source.path), path.join(root, 'boot.asm'));
+    assert.equal(await fs.realpath(stack[0].source.path), await fs.realpath(path.join(root, 'boot.asm')));
     const memory = await request('qemuAsm.inspectMemory', { address: 0x7c00, count: 16, follow: 'address', space: 'physical' });
     assert.deepEqual(Buffer.from(memory.bytes), image.subarray(0, 16));
     capability(await request('qemuAsm.dependencyReport'), 'qemu.physicalMemory', 'supported', 'protocol');
@@ -158,7 +158,7 @@ exports.run = async function() {
     await vscode.commands.executeCommand('qemuAsm.debug'); current = await until(() => sessions[cSession], 'C debug session');
     await until(() => current.stops.length > 0, 'actual C kernel_main entry');
     const cReport = await request('qemuAsm.dependencyReport'); capability(cReport, 'gdb.mi', 'supported', 'protocol'); capability(cReport, 'qemu.rspTarget', 'supported', 'protocol');
-    const cStack = (await request('stackTrace', { threadId: 1 })).stackFrames; assert.match(cStack[0].name, /kernel_main/); assert.equal(cStack[0].source.path, fixture.source);
+    const cStack = (await request('stackTrace', { threadId: 1 })).stackFrames; assert.match(cStack[0].name, /kernel_main/); assert.equal(await fs.realpath(cStack[0].source.path), await fs.realpath(fixture.source));
     assert.notEqual(cReport.scope.sessionId, runtime.scope.sessionId, 'C target must have a new capability scope');
     await request('disconnect', { terminateDebuggee: true }); await until(() => terminated.has(current.session.id), 'C shutdown');
     console.log('PASS: actual native C debug uses the project-owned prebuilt artifacts without NASM, resolves GDB consistently and reports real MI/RSP evidence');

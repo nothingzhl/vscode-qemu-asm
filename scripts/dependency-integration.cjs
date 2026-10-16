@@ -113,7 +113,7 @@ async function main() {
     capability(cReport, 'gdb.mi', 'supported', 'protocol'); capability(cReport, 'qemu.rspTarget', 'supported', 'protocol');
     capability(cReport, 'qemu.segmentRegisters', 'supported', 'protocol'); capability(cReport, 'qemu.physicalMemory', 'unknown');
     const cFrame = (await cClient.request('stackTrace', { threadId: 1 })).stackFrames[0];
-    assert.match(cFrame.name, /kernel_main/); assert.equal(cFrame.source.path, fixture.source);
+    assert.match(cFrame.name, /kernel_main/); assert.equal(await fs.realpath(cFrame.source.path), await fs.realpath(fixture.source));
     const cMemory = await cClient.request('qemuAsm.inspectMemory', { address: F.CODE_PHYSICAL, count: 8, space: 'physical', follow: 'address' });
     assert.equal(cMemory.bytes.length, 8); capability(await cClient.request('qemuAsm.dependencyReport'), 'qemu.physicalMemory', 'supported', 'protocol');
     assert(!observed.slice(cStart).some(item => item.args.includes('-f')), 'external C adapter must not invoke NASM');

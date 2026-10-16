@@ -83,7 +83,7 @@ message: db 'QEMU screen integration: press Enter',0
 times 510-($-$$) db 0
 dw 0xaa55
 `);
-    const nasm = spawnSync(process.env.NASM_PATH || 'nasm', ['-f', 'bin', source, '-o', image], { encoding: 'utf8' });
+    const nasm = spawnSync(process.env.NASM_PATH || 'nasm', ['-f', 'bin', path.basename(source), '-o', path.basename(image)], { cwd: path.dirname(source), encoding: 'utf8' });
     if (nasm.error) throw nasm.error;
     assert.equal(nasm.status, 0, nasm.stderr);
     screen = await QemuScreen.create();

@@ -24,7 +24,7 @@ exports.run = async function() {
   assert.equal(vscode.workspace.workspaceFolders.length, 1);
   const extensionRoot = await fs.realpath(process.env.QEMU_ASM_VSIX_EXTENSION);
   const testRoot = await fs.realpath(process.env.QEMU_ASM_VSIX_TEST_ROOT);
-  assert.equal(path.dirname(__filename), path.join(testRoot, 'external-tests'), 'test module must execute outside the repository and product');
+  assert.equal(await fs.realpath(path.dirname(__filename)), await fs.realpath(path.join(testRoot, 'external-tests')), 'test module must execute outside the repository and product');
   // This is the only product import. In particular, no repo/dist, helper test,
   // source decoder or development dependency can substitute for VSIX contents.
   const core = require(path.join(extensionRoot, 'dist', 'core.js'));
@@ -98,7 +98,7 @@ exports.run = async function() {
     assert.equal(breakpoints.breakpoints[0].verified, true, JSON.stringify(breakpoints));
     assert.equal((await stoppedAfter('continue')).reason, 'breakpoint');
     const frame = (await request('stackTrace', { threadId: 1 })).stackFrames[0];
-    assert.equal(path.resolve(frame.source.path), path.resolve(stage));
+    assert.equal(await fs.realpath(frame.source.path), await fs.realpath(stage));
     assert.equal(frame.line, nop + 1);
     const edi = number((await request('evaluate', { expression: 'edi', frameId: frame.id, context: 'watch' })).result);
     const disassembly = await request('qemuAsm.disassemble', { count: 3 });

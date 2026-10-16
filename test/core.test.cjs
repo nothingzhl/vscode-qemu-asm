@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { resolveProject, createProject, Processes, build, execute, parseErrors, qemuArguments } = require('../dist/core');
+const { localHost } = require('../dist/platform/host');
 async function temporary(t) { const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'asm test ')); t.after(()=>fs.rm(dir,{recursive:true,force:true})); return dir; }
 test('configuration resolves selected workspace, project and spaced tool paths', () => {
  const workspace = path.resolve(os.tmpdir(), 'workspace', 'one');
@@ -118,15 +119,15 @@ test('protected project preserves an existing stage and rolls back its boot sour
  assert.match(await fs.readFile(path.join(root,'stage2.asm'),'utf8'),/bits 32[\s\S]*PROTECTED_MODE_OK/);
 });
 // A deterministic process stub supplies binary fixtures; real NASM/QEMU validation lives in stage-build-integration.cjs.
-function binaryCompiler(calls=[]) {
- return { start(_command,args) {
+function binaryCompiler(calls=[],platform=process.platform) {
+ return { host: { ...localHost, identity: { ...localHost.identity, platform } }, start(_command,args,cwd) {
   calls.push(args);
-  const done=(async()=>{ await fs.copyFile(args[2],args[args.indexOf('-o')+1]); const listing=args.indexOf('-l'); if(listing>=0)await fs.writeFile(args[listing+1],'fixture listing'); })();
+  const done=(async()=>{ await fs.copyFile(path.resolve(cwd,args[2]),path.resolve(cwd,args[args.indexOf('-o')+1])); const listing=args.indexOf('-l'); if(listing>=0)await fs.writeFile(path.resolve(cwd,args[listing+1]),'fixture listing'); })();
   return {child:{kill(){}},ready:Promise.resolve(),done};
  }};
 }
-async function stagedFixture(t,stageData=[Buffer.alloc(513,0x31),Buffer.from([0x32])],overrides=[]) {
- const root=await temporary(t); const boot=Buffer.alloc(512); boot[510]=0x55;boot[511]=0xaa;
+async function stagedFixture(t,stageData=[Buffer.alloc(513,0x31),Buffer.from([0x32])],overrides=[],fixtureRoot) {
+ const root=fixtureRoot??await temporary(t); const boot=Buffer.alloc(512); boot[510]=0x55;boot[511]=0xaa;
  await fs.writeFile(path.join(root,'boot.asm'),boot);
  const stages=[];
  for(let i=0;i<stageData.length;i++) { const source=`stage${i+1}.asm`; await fs.writeFile(path.join(root,source),stageData[i]); stages.push({source,loadAddress:0x8000+i*0x1000,lba:1+i*3,...overrides[i]}); }
@@ -138,11 +139,27 @@ test('stage build orders stages before boot, pads disk sectors and returns sourc
  assert.equal(result.imageBytes,1474560); assert.deepEqual(result.units.map(unit=>unit.size),[512,513,1]);
  assert.deepEqual(result.units.map(unit=>unit.loadAddress),[0x7c00,0x8000,0x9000]);
  assert.deepEqual(result.units.map(unit=>unit.listingPath),[listing,`${listing}.stage1.lst`,`${listing}.stage2.lst`]);
- assert.deepEqual(calls.map(args=>args[2]),[...project.stages.map(stage=>stage.source),project.source]);
+ assert.deepEqual(calls.map(args=>path.resolve(project.root,args[2])),[...project.stages.map(stage=>stage.source),project.source]);
  assert.deepEqual(calls[2].slice(-2),['-D','STAGE2_SECTORS=2']);
  const image=await fs.readFile(project.image); assert.equal(image.length,1474560);
  assert.equal(image.subarray(510,512).toString('hex'),'55aa'); assert(image.subarray(512,1025).every(byte=>byte===0x31));
  assert(image.subarray(1025,2048).every(byte=>byte===0)); assert.equal(image[2048],0x32); assert(image.subarray(2049).every(byte=>byte===0));
+});
+test('Windows NASM keeps a Unicode project root in cwd while source/output/listing arguments stay local', async t => {
+ const parent=await temporary(t), root=path.join(parent,'中文 project, with spaces'); await fs.mkdir(root);
+ const project=await stagedFixture(t,undefined,undefined,root), calls=[], compiler=binaryCompiler(calls,'win32');
+ const listing=path.join(root,'boot.lst'), start=compiler.start.bind(compiler);
+ compiler.start=(command,args,cwd)=>{ assert.equal(cwd,root); return start(command,args,cwd); };
+ const result=await build(project,compiler,()=>{},()=>false,listing);
+ assert.equal(result.units.length,3); assert.equal(result.imageBytes,1474560);
+ assert.deepEqual(calls.map(args=>path.resolve(root,args[2])),[...project.stages.map(stage=>stage.source),project.source]);
+ for(const args of calls) {
+  for(const file of [args[2],args[args.indexOf('-o')+1],args[args.indexOf('-l')+1]]) {
+   assert.equal(path.isAbsolute(file),false); assert(file.startsWith(`.${path.sep}`)); assert(!file.includes('中文'));
+  }
+ }
+ assert.equal((await fs.readFile(project.image)).subarray(510,512).toString('hex'),'55aa');
+ for(const unit of result.units) assert.equal(await fs.readFile(unit.listingPath,'utf8'),'fixture listing');
 });
 test('stage size, disk overlap and memory overlap failures invalidate old images', async t => {
  const cases=[
