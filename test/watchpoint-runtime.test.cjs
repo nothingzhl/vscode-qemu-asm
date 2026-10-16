@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { DebugRuntime, stoppedEvent } = require('../dist/debug/runtime');
 
 function runtimeWithClient(reply = () => 'OK') {
-  const runtime = new DebugRuntime({}, () => {});
+  const runtime = new DebugRuntime({ qemuArgs: [] }, () => {});
   const commands = [];
   runtime.client = {
     async command(packet) { commands.push(packet); return reply(packet, commands.length); },

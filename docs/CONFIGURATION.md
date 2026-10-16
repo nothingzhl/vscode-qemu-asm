@@ -1,6 +1,6 @@
 # 配置参考
 
-插件使用两类配置：VS Code 设置负责工具和工作区位置，项目内的 `qemu-asm.json` 负责源码、镜像和构建方式。首次使用可先按[快速开始](QUICKSTART.md)生成最小项目。
+VS Code 设置负责工具、工作区位置及机器默认值；项目内的 `qemu-asm.json` 负责源码、镜像、构建方式与可选的启动方案。首次使用可先按[快速开始](QUICKSTART.md)生成最小项目。
 
 ## VS Code 设置
 
@@ -29,6 +29,57 @@
 `projectDirectory` 和设置里带分隔符的相对工具路径以**所选工作区文件夹**为基准；绝对路径直接使用，裸工具名从 PATH 查找。工具路径只填写可执行文件，不包含参数或外层引号。不展开 `~`、环境变量或 `${workspaceFolder}`。Windows 请用 `C:\Tools\qemu-system-i386.exe` 这样的完整路径，不能用 `C:tool.exe` 盘符相对路径；在 JSON 中反斜杠须写为 `\\`。
 
 工具运行于扩展宿主。WSL、容器或 SSH 窗口内的 PATH 和文件系统与本地窗口不同，详见[环境排错](TROUBLESHOOTING.md#工具找不到或路径不对)。
+
+## 启动方案
+
+同一项目可以保存多套机器配置，供运行和调试共用。执行 **QEMU Assembly: 配置启动方案**，会打开真实项目的 `qemu-asm.json`；编辑器通过 JSON Schema 提供字段说明、补全和错误提示。当前使用 JSON 编辑器，尚无独立的图形配置页面。
+
+在已有项目配置中加入以下字段，例如：
+
+```json
+{
+  "source": "boot.asm",
+  "image": "build/boot.img",
+  "defaultMachineProfile": "normal",
+  "machineProfiles": {
+    "normal": {
+      "memoryMiB": 64,
+      "cpuModel": "qemu32",
+      "display": true
+    },
+    "low-memory": {
+      "memoryMiB": 16,
+      "display": false
+    }
+  }
+}
+```
+
+| 字段 | 含义与约束 |
+| --- | --- |
+| `machineProfiles` | 名称到启动方案的映射；名称为 1..64 字符，不含首尾空白或控制字符；每套方案可只填写需要覆盖的字段 |
+| `defaultMachineProfile` | 项目默认方案名称，必须指向已定义方案 |
+| `memoryMiB` | 客体内存，单位 MiB；整数，范围 1..4096 |
+| `cpuModel` | 单个 CPU 型号，例如 `qemu32`；不接受附带特性或其他 QEMU 参数 |
+| `display` | `true` 开启内嵌显示器，`false` 不分配 QMP 显示资源 |
+
+执行 **QEMU Assembly: 选择启动方案**，从当前项目的方案中选择。插件按工作区文件夹与项目根目录分别记住手选结果，不修改其他项目。选中的方案在**下次启动或重启**时生效，不会修改正在运行的虚拟机。
+
+下图来自真实调试会话：当前手选 `normal`，客体使用 64 MiB、`pentium3` 与内嵌显示器；列表同时标明项目默认方案。输出面板显示本次启动的实际配置。
+
+![真实启动方案选择器与运行中的 QEMU 显示器](images/machine-profiles-selection.png)
+
+完整配置界面与验证范围见[启动方案验收](MACHINE_PROFILES_VALIDATION.md)。
+
+要取消手选，在列表中选择“使用项目默认 / 工作区设置”；随后使用项目默认方案，没有默认方案时继承工作区设置。方案中未知字段会报错，避免拼写错误被忽略。
+
+选择顺序为：**`launch.json` 的 `machineProfile` → 记住的手选方案 → `defaultMachineProfile` → 原有设置**。显式指定或记住的方案不存在时会报错，不会悄悄使用另一套机器环境。
+
+方案内未填写的字段继承现有设置：内存与 CPU 继承 `qemuAsm.qemuArgs`，显示器继承 `qemuAsm.displayMode`；没有相应设置时沿用现有 QEMU 默认值。方案只覆盖对应项，启动参数不会因此重复添加 `-m` 或 `-cpu`。没有新增项目字段的旧项目仍沿用原有行为，`qemuAsm.qemuArgs` 保留。
+
+CPU 型号由实际选中的 QEMU 查询并校验，工具版本间可能不同；型号存在不代表它支持任意客体所需的指令。当前仍是单 CPU 的 x86 16/32 位环境，不开放磁盘、网络、UEFI、多核或硬件加速方案。
+
+**输出 → QEMU Assembly** 与 **QEMU Assembly: 打开依赖与能力报告** 会显示当前方案、选择来源及内存、CPU、显示器的生效配置。排查配置未生效时，先确认报告对应本次启动，再核对是否被 `launch.json` 显式指定的方案覆盖。
 
 ## 单扇区 NASM 项目
 
@@ -114,11 +165,14 @@
   "type": "qemu-asm",
   "request": "launch",
   "name": "操作系统学习：16/32 位引导调试",
+  "machineProfile": "normal",
   "stopOnEntry": true
 }
 ```
 
 NASM 默认停在 `0x7c00`；C 项目停在配置入口或 ELF 入口。设为 `false` 时继续运行，用户断点仍然生效。
+
+`machineProfile` 可选；示例中的 `normal` 必须已在项目内定义。不指定时使用手选或项目默认方案。重启会重读项目配置：显式指定的方案保持同一名称并读取新值；未显式指定时重新解析当前手选或默认方案。
 
 ## 进程和执行边界
 

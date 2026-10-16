@@ -41,6 +41,7 @@ npm test
 | `npm run test:c-machine` | 外部 GCC 客体的机器级调试 |
 | `npm run test:c-source` | ELF/DWARF、GDB 源码步进、变量、帧与分页 |
 | `npm run test:dependencies` | 统一工具解析、按需依赖、能力证据与会话隔离 |
+| `npm run test:profiles` | 实际 RAM/CPU 配置、NASM/C 启动与重启、显示资源、无效 CPU 和清理 |
 
 脚本在含空格/逗号的临时目录生成客体，结束后清理。支持用 `NASM_PATH`、`QEMU_PATH`、`GDB_PATH` 指定工具；C 测试另可使用 `CC`、`LD`、`OBJCOPY`、`NM`。平台和工具组合没有实际运行时不要记为通过。
 
@@ -54,13 +55,15 @@ xvfb-run -a npm run test:host
 
 脚本默认下载 VS Code stable；`VSCODE_VERSION=1.96.4` 选择声明支持范围内的旧版本，`VSCODE_EXECUTABLE_PATH` 指向已有可执行文件。每阶段使用独立临时用户配置。
 
-可通过 `QEMU_ASM_HOST_PHASES` 选择 `trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies` 的子集，例如：
+可通过 `QEMU_ASM_HOST_PHASES` 选择 `trusted,untrusted,resources,debug,display,protected,inspection,machine,paging,c-source,dependencies,machine-profiles` 的子集，例如：
 
 ```sh
-QEMU_ASM_HOST_PHASES=debug,dependencies xvfb-run -a npm run test:host
+QEMU_ASM_HOST_PHASES=debug,machine-profiles xvfb-run -a npm run test:host
 ```
 
-这是 POSIX shell 写法；PowerShell 用 `$env:QEMU_ASM_HOST_PHASES = 'debug,dependencies'` 后运行命令。界面交互、截图与录屏依赖独立的 UI 脚本和工具，见[各阶段历史记录](README.md#历史验证记录)及[录屏复现](demos/README.md#重新录制)。
+新启动方案的真实配置编辑器与选择器截图可执行 `xvfb-run -a npm run test:profiles:ui`，输出目录通过 `QEMU_ASM_PROFILES_SCREENSHOT_DIRECTORY` 指定。
+
+这是 POSIX shell 写法；PowerShell 用 `$env:QEMU_ASM_HOST_PHASES = 'debug,machine-profiles'` 后运行命令。`machine-profiles` 阶段验证方案命令、项目 JSON 编辑器和 Schema、按项目记忆、启动项覆盖与重启。界面交互、截图与录屏依赖独立的 UI 脚本和工具，见[各阶段历史记录](README.md#历史验证记录)及[录屏复现](demos/README.md#重新录制)。
 
 ## 打包与独立安装验证
 
@@ -87,6 +90,7 @@ npm run test:vsix:dependencies
 npm run test:vsix:machine
 npm run test:vsix:paging
 npm run test:vsix:c-source
+npm run test:vsix:profiles
 ```
 
 Linux 无桌面时加 `xvfb-run -a`。测试会把输入复制到仓库外，并从安装目录加载产品和 WASM。打包不是 Marketplace 发布；仓库维护规则禁止自动发布。
@@ -97,7 +101,7 @@ Linux 无桌面时加 `xvfb-run -a`。测试会把输入复制到仓库外，并
 | --- | --- |
 | `npm run docs:check` | 全仓 Markdown 内部链接/标题锚点，当前指南的 JSON、命令和配置键检查 |
 | `npm run test:coverage` | 单元/契约测试及 `artifacts/coverage/` 下的 HTML、LCOV、JSON |
-| `npm run test:ci` | 一次编译后执行 14 组真实后端脚本，逐项日志及结果位于 `artifacts/integration/` |
+| `npm run test:ci` | 一次编译后执行 15 组真实后端脚本，逐项日志及结果位于 `artifacts/integration/` |
 | `npm run test:compatibility` | 用当前选择的真实工具运行版本兼容场景，结果位于 `artifacts/compatibility/` |
 | `npm run test:performance` | 显示编码、静止/变化画面、观察器耗时和保留内存 |
 | `npm run test:performance:resources` | 100 次资源生命周期及内存历史清理 |
@@ -108,6 +112,8 @@ Linux 无桌面时加 `xvfb-run -a`。测试会把输入复制到仓库外，并
 性能命令显式使用 `--expose-gc`，输出耗时、CPU、heap、Buffer 与 RSS，宽松阈值用于捕获严重回退。对比方法、原始样本和优化代价见[性能说明](PERFORMANCE.md)。这些报告不把 QEMU/GDB 客体进程的内存算作扩展模块本身的内存。
 
 主 CI 按质量检查、Linux 完整后端、原生平台冒烟、宿主、打包与独立安装分层；`CI result` 要求所有主层成功。性能与旧工具矩阵分别由独立工作流执行和上传结果，失败不会被 `continue-on-error` 隐藏。历史远端失败日志在当前环境不可读取，工作流调整和本地实测不等同于承诺 GitHub 所有组合已绿。
+
+启动方案的校验、优先级和参数覆盖有独立单元测试；真实工具入口 `test:profiles` 验证机器的实际 RAM 与 CPU，而不是只比对参数。旧工具矩阵也执行相同的 NASM 方案场景，独立安装包执行 `test:vsix:profiles`，避免只在源码开发环境中可用。配置支持与执行结果分开记录，不能从 Schema 补全推定所有 CPU 或版本可用。
 
 覆盖率用于找出未覆盖的分支，仍应通过独立行为断言验证失败、取消和清理。性能测试应区分扩展进程、解码器与外部 QEMU/GDB，记录输入规模和工具版本，方法见[性能](PERFORMANCE.md)。多版本用同一组真实协议和功能测试验收，不能只比较版本字符串。
 

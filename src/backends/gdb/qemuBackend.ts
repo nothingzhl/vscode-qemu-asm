@@ -9,6 +9,7 @@ import { GdbMemory } from './memory';
 import { MiClient } from './miClient';
 import { MiRecord, MiTuple, miQuote } from './miParser';
 import { readGdbRegisters } from './registers';
+import { qemuMachineArguments } from '../qemu/arguments';
 
 import { validateDebugElf } from './elf';
 /** C 模式只有 GDB 持有 QEMU GDB socket，避免两套 RSP 客户端争用目标。 */
@@ -54,7 +55,7 @@ export class QemuGdbBackend extends EventEmitter {
       backend: 'c-gdb-mi',
       host: localHost.identity,
       tools,
-      machine: project.qemuArgs
+      machine: qemuMachineArguments(project)
     });
     this.memory = new GdbMemory(
       () => this.requireStopped(),

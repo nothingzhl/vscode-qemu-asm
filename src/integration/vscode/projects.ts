@@ -3,6 +3,9 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { resolveProject } from '../../project/config';
 import type { Project } from '../../project/model';
+import type { MachineProfileSelection } from '../../project/machineProfiles';
+
+type ProfileChoice = MachineProfileSelection | ((project: Project) => MachineProfileSelection | undefined);
 
 export async function selectWorkspace(): Promise<vscode.WorkspaceFolder> {
   const folders = vscode.workspace.workspaceFolders;
@@ -18,17 +21,24 @@ export async function selectWorkspace(): Promise<vscode.WorkspaceFolder> {
 
 export async function readProject(
   readConfig = true,
-  explicitFolder?: vscode.WorkspaceFolder
+  explicitFolder?: vscode.WorkspaceFolder,
+  selection?: ProfileChoice
 ): Promise<Project> {
   const selected = explicitFolder ?? (await selectWorkspace());
   const settings = vscode.workspace.getConfiguration('qemuAsm', selected.uri);
+  const projectDirectory = settings.get('projectDirectory');
+  const display = settings.inspect<string>('displayMode');
+  const explicitDisplay = [display?.globalValue, display?.workspaceValue, display?.workspaceFolderValue].some(
+    (value) => value !== undefined
+  );
   const tools = {
     nasm: settings.get('nasmPath'),
     qemu: settings.get('qemuPath'),
     gdb: settings.get('gdbPath'),
-    qemuArgs: settings.get('qemuArgs')
+    qemuArgs: settings.get('qemuArgs'),
+    displayMode: explicitDisplay ? settings.get('displayMode') : undefined
   };
-  const base = resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), {}, tools);
+  const base = resolveProject(selected.uri.fsPath, projectDirectory, {}, tools);
   if (!readConfig) return base;
   let data: unknown;
   try {
@@ -36,5 +46,6 @@ export async function readProject(
   } catch (error) {
     throw new Error(`无法读取 qemu-asm.json，请先创建项目。${String(error)}`);
   }
-  return resolveProject(selected.uri.fsPath, settings.get('projectDirectory'), data, tools);
+  const choice = typeof selection === 'function' ? selection(base) : selection;
+  return resolveProject(selected.uri.fsPath, projectDirectory, data, tools, choice);
 }
