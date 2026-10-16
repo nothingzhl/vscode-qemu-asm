@@ -14,9 +14,10 @@ import type { AdapterOptions, CAdapterOptions, QemuDisplay } from './options';
 
 async function resources<Backend extends SessionLifecycle>(
   options: Pick<AdapterOptions, 'isTrusted' | 'createDisplay'>,
+  project: Project,
   create: (args: string[]) => Backend
 ): Promise<SessionResources<Backend>> {
-  const display: QemuDisplay | undefined = await options.createDisplay?.();
+  const display: QemuDisplay | undefined = await options.createDisplay?.(project);
   try {
     if (!options.isTrusted()) throw new Error('请先信任工作区，才能启动或控制调试器');
     return { backend: create(display?.args ?? []), display };
@@ -36,6 +37,7 @@ export function assemblyServices(options: AdapterOptions): AssemblySessionOption
     createResources: (project, log) =>
       resources(
         options,
+        project,
         (args) =>
           options.runtimeFactory?.(project, log, args) ??
           new QemuRspBackend(project, new QemuVirtualMachine(project, new Processes(), log, args))
@@ -49,7 +51,7 @@ export function sourceServices(options: CAdapterOptions): SessionOptions<SourceB
     decoder: icedDecoder,
     builder: new ManagedProjectBuilder(new Processes(), options.buildProject),
     createResources: (project, log) =>
-      resources(options, (args) => {
+      resources(options, project, (args) => {
         if (options.backendFactory) return options.backendFactory(project, log, args);
         const connection =
           options.runtimeFactory?.(project, log, args) ??

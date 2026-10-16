@@ -4,6 +4,7 @@ import { localHost, type HostPlatform } from '../platform/host';
 import { execute, Processes } from '../platform/processes';
 import { resolveExecutable, type ExecutableResolution } from './tools';
 import { CapabilityLedger, type CapabilityReport } from './capabilities';
+import { formatQemuLaunchConfiguration, qemuLaunchConfiguration, type QemuLaunchConfiguration } from '../backends/qemu/arguments';
 
 export type EnvironmentToolId = 'nasm' | 'qemu' | 'gdb' | 'builder';
 
@@ -26,6 +27,7 @@ export interface EnvironmentReport {
   project: { root: string; build: 'nasm' | 'external'; debug: 'nasm' | 'c' };
   status: 'passed' | 'failed' | 'cancelled';
   tools: EnvironmentToolCheck[];
+  launchConfiguration: QemuLaunchConfiguration;
   capabilities: CapabilityReport;
   /** A separately scoped snapshot from the active adapter; never merged into basic checks. */
   runtimeReport?: CapabilityReport;
@@ -95,13 +97,14 @@ export async function checkEnvironment(project: Project, processes: Processes, o
   }
   const scopeTools: Record<string, string> = {};
   for (const tool of tools) if (tool.resolution.status === 'resolved' && tool.resolution.executable) scopeTools[tool.id] = tool.resolution.executable;
+  const launchConfiguration = qemuLaunchConfiguration(project);
   const ledger = new CapabilityLedger({
     sessionId: randomUUID(),
     targetId: `environment:${project.root}`,
     backend: project.debug ? 'c' : 'nasm',
     host: host.identity,
     tools: scopeTools,
-    machine: project.qemuArgs,
+    machine: launchConfiguration.arguments,
   });
   return {
     schemaVersion: 1,
@@ -110,6 +113,7 @@ export async function checkEnvironment(project: Project, processes: Processes, o
     project: { root: project.root, build: project.build ? 'external' : 'nasm', debug: project.debug ? 'c' : 'nasm' },
     status: cancelled() ? 'cancelled' : tools.some(tool => tool.status === 'failed') ? 'failed' : 'passed',
     tools,
+    launchConfiguration,
     capabilities: ledger.snapshot(),
     ...(options.runtimeReport ? { runtimeReport: structuredClone(options.runtimeReport) } : {}),
   };
@@ -127,6 +131,7 @@ export function formatEnvironmentReport(report: EnvironmentReport): string {
     `项目：${report.project.root}`,
     `构建：${report.project.build === 'external' ? '项目自定义命令' : 'NASM'}；调试：${report.project.debug === 'c' ? 'C / GDB MI' : 'NASM / RSP'}`,
     '检查范围：工具解析与已知版本命令；不构建用户项目、不连接调试目标。',
+    formatQemuLaunchConfiguration(report.launchConfiguration),
     '',
   ];
   for (const tool of report.tools) {

@@ -1,3 +1,6 @@
+import type { MachineProfile, SelectedMachineProfile } from './machineProfiles';
+export type { MachineProfile, MachineProfileSelection, SelectedMachineProfile } from './machineProfiles';
+
 export interface Stage {
   source: string;
   loadAddress: number;
@@ -32,6 +35,11 @@ export interface Project {
   nasm: string;
   qemu: string;
   qemuArgs: string[];
+  machineProfiles?: Record<string, MachineProfile>;
+  defaultMachineProfile?: string;
+  machineProfile?: SelectedMachineProfile;
+  displayMode?: 'auto' | 'off';
+  displayModeSource?: 'workspace' | 'default';
   build?: ExternalBuild;
   debug?: ElfDebugConfiguration;
 }

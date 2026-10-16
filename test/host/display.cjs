@@ -212,7 +212,7 @@ exports.run = async function() {
     await until(() => debug.stops.length > count, 'debug step with screen connected');
     const trace = await debug.session.customRequest('stackTrace', { threadId: 1 });
     assert(trace.stackFrames.length > 0, 'screen transport must not interfere with source stepping');
-    assert.equal(path.resolve(trace.stackFrames[0].source.path), path.resolve(source));
+    assert.equal(await fs.realpath(trace.stackFrames[0].source.path), await fs.realpath(source));
     assertPng(observed.rendered.at(-1));
     await vscode.debug.stopDebugging(debug.session); debug = undefined;
     await vscode.commands.executeCommand('qemuAsm.stop');

@@ -97,7 +97,7 @@ test('symlink identity never changes the startup path used by a wrapper', { skip
  fs.symlinkSync(original, link);
  const resolved = requireExecutable(link, cwd);
  assert.equal(resolved.executable, link);
- assert.equal(resolved.canonicalPath, original);
+ assert.equal(resolved.canonicalPath, fs.realpathSync(original));
  const run = spawnSync(resolved.executable, [], { cwd, encoding: 'utf8', shell: false });
  assert.equal(run.status, 0);
  assert.equal(run.stdout, link);
@@ -176,7 +176,7 @@ test('Windows metadata simulation refuses PATHEXT scripts and unsupported entry 
 
 test('filesystem access errors keep their code and candidate path in diagnostics', t => {
  const cwd = temporary(t);
- const file = path.join(cwd, 'blocked');
+ const file = path.join(cwd, 'blocked.exe');
  t.mock.method(fs, 'statSync', () => { throw Object.assign(new Error('denied'), { code: 'EPERM' }); });
  const result = resolveExecutable(file, cwd);
  assert.equal(result.status, 'not-executable');

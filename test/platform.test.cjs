@@ -38,10 +38,13 @@ test('process launches use the injected host environment, resolved path and argu
   const run = runner.start(process.execPath, ['-e', 'console.log(JSON.stringify([process.argv[1],process.env.QEMU_ASM_PLATFORM_TEST,process.cwd()]))', argument], root, text => { output += text; });
   await run.ready;
   await run.done;
-  assert.deepEqual(JSON.parse(output), [argument, 'injected value', root]);
+  const [receivedArgument, receivedEnvironment, receivedCwd] = JSON.parse(output);
+  assert.deepEqual([receivedArgument, receivedEnvironment], [argument, 'injected value']);
+  assert.equal(await fs.realpath(receivedCwd), await fs.realpath(root));
   assert.equal(run.tool.status, 'resolved');
   assert.equal(calls[0].command, run.tool.executable);
   assert.equal(calls[0].options.env, env);
+  assert.equal(calls[0].options.cwd, root);
   assert.equal(calls[0].options.shell, false);
   assert.equal(calls[0].options.detached, host.identity.platform !== 'win32');
 });
@@ -49,7 +52,12 @@ test('process launches use the injected host environment, resolved path and argu
 test('missing tool fails with ENOENT before spawn and leaves the manager reusable', async t => {
   const root = await temporary(t);
   let calls = 0;
-  const host = { ...localHost, env: { ...process.env, PATH: '' }, spawn(...args) { calls++; return spawn(...args); } };
+  const host = {
+    ...localHost, env: { ...process.env, PATH: '' },
+    spawn(...args) { calls++; return spawn(...args); },
+    // Keep native cleanup separate from the tool-launch counter on Windows.
+    terminateProcessTree: localHost.terminateProcessTree.bind(localHost),
+  };
   const runner = new Processes(host);
   t.after(() => runner.dispose());
   assert.throws(() => runner.start('qemu-asm-definitely-missing', [], root, () => {}), error => error.code === 'ENOENT');

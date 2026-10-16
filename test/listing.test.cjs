@@ -74,6 +74,48 @@ test('listing data continuations, repetitions, reservations and alignment stay u
   assert.equal(map.forAddress(0x7c10), undefined);
 });
 
+const legacyPath = path.join(__dirname, 'fixtures', 'nasm-2.14-repetitions.asm');
+const legacySource = syncFs.readFileSync(legacyPath, 'utf8');
+const legacyListing = syncFs.readFileSync(legacyPath.replace(/\.asm$/, '.lst'), 'utf8');
+test('actual NASM 2.14 listing maps repetitions, continued data and reservations using observed boundaries', () => {
+  // The actual 2.14.02 binary is 109 bytes. <rept> omits the repeat count;
+  // the final repetition therefore requires the builder's exact binary length.
+  const map = parseListing(legacyListing, legacyPath, legacySource, { byteLength: 109 });
+  assert.equal(map.byteLength, 109);
+  assert.deepEqual(map.entries.map(entry => [entry.line, entry.address, entry.size]), [
+    [4, 0x7c00, 1], [11, 0x7c68, 1]
+  ]);
+  for (const address of [0x7c01, 0x7c13, 0x7c1b, 0x7c20, 0x7c67, 0x7c69, 0x7c6c])
+    assert.equal(map.forAddress(address), undefined, 'padding and data must never become source stops');
+  for (const line of [5, 6, 7, 8, 9, 10, 12]) assert.equal(map.forLine(line), undefined);
+  const withoutTrailingRepeat = legacyListing.split('\n').filter(row => !/^\s*12 /.test(row)).join('\n');
+  const shorterSource = legacySource.split('\n').filter((_, index) => index !== 11).join('\n');
+  assert.equal(parseListing(withoutTrailingRepeat, legacyPath, shorterSource).byteLength, 105);
+});
+
+test('legacy repeats cannot guess missing boundaries or accept inconsistent repeat and binary spans', () => {
+  assert.throws(() => parseListing(legacyListing, legacyPath, legacySource), /后继偏移或实际镜像长度/);
+  for (const byteLength of [0, -1, 1.5, Infinity, 513])
+    assert.throws(() => parseListing(legacyListing, legacyPath, legacySource, { byteLength }), /实际镜像长度/);
+  for (const byteLength of [104, 105, 106])
+    assert.throws(() => parseListing(legacyListing, legacyPath, legacySource, { byteLength }), /边界/);
+  const incorrectContinuation = legacyListing.replace('00000068 90', '00000067 90');
+  assert.throws(() => parseListing(incorrectContinuation, legacyPath, legacySource, { byteLength: 109 }), /边界/);
+  const inconsistentEnd = tinyListing([row(3, 0, '90', 'nop'), row(4, 1, '0000<rept>', 'times 4 dw 0')]);
+  assert.throws(() => parseListing(inconsistentEnd, 'boot.asm', tinySource('nop\ntimes 4 dw 0'), { byteLength: 4 }), /边界/);
+  assert.throws(() => parseListing(listing, fixturePath, source, { byteLength: 511 }), /实际镜像长度不一致/);
+  assert.equal(parseListing(listing, fixturePath, source, { byteLength: 512 }).byteLength, 512);
+});
+
+test('legacy support is restricted to known data markers and keeps unknown formats invalid', () => {
+  for (const marker of ['00<reptx>', '00<rep>', '<rept>', '<res 8>', '<res 0000000G>', '<res 00000000>']) {
+    const input = tinyListing([row(3, 0, marker, 'db 0'), row(4, 8, '90', 'nop')]);
+    assert.throws(() => parseListing(input, 'boot.asm', tinySource('db 0\nnop')), /机器码字段|保留区长度/);
+  }
+  const instructionRepeat = tinyListing([row(3, 0, '90<rept>', 'nop'), row(4, 2, 'F4', 'hlt')]);
+  assert.throws(() => parseListing(instructionRepeat, 'boot.asm', tinySource('nop\nhlt')), /只能用于数据填充/);
+});
+
 test('ambiguous preprocessing, repeat instructions, sections and unsupported modes fail explicitly', () => {
   for (const statement of [
     '%include "other.asm"', '%macro m 0', '%if 1', 'section .text', '[section .text]', 'segment .text',
@@ -237,11 +279,12 @@ test('actual NASM independently builds mixed stage and accepts command-line cons
   const list = path.join(root, 'stage2.lst');
   const result = spawnSync(nasm, ['-f', 'bin', stagePath, '-o', output, '-l', list], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  const map = parseListing(await fs.readFile(list, 'utf8'), stagePath, stageSource, { loadAddress: 0x8000, maxBytes: 4096 });
-  assert.equal((await fs.stat(output)).size, 640);
+  const byteLength = (await fs.stat(output)).size;
+  const map = parseListing(await fs.readFile(list, 'utf8'), stagePath, stageSource, { loadAddress: 0x8000, maxBytes: 4096, byteLength });
+  assert.equal(byteLength, 640);
   assert.equal(map.forLine(lineOf('jmp 0x08:protected_entry', stageSource)).size, 5);
   assert.equal(map.forLine(lineOf('call worker', stageSource)).size, 5);
-  const automatic = parseListing(await fs.readFile(list, 'utf8'), stagePath, stageSource, { loadAddress: 0x8000, maxBytes: 4096, initialBits: 'auto' });
+  const automatic = parseListing(await fs.readFile(list, 'utf8'), stagePath, stageSource, { loadAddress: 0x8000, maxBytes: 4096, byteLength, initialBits: 'auto' });
   assert.deepEqual(automatic.entries, map.entries, 'auto must retain both actual NASM instruction modes');
   const bootSource = tinySource('mov al, STAGE2_SECTORS\nhlt');
   const bootPath = path.join(root, 'boot.asm');

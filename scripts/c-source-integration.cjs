@@ -78,7 +78,7 @@ async function memory(client, address, count, space = 'virtual') { return client
 async function exercise(client, fixture, ui) {
   await client.launch();
   let current = await frame(client);
-  assert.equal(current.source.path, fixture.source);
+  assert.equal(await fs.realpath(current.source.path), await fs.realpath(fixture.source));
   assert.match(current.name, /kernel_main/);
   assert(number(current.instructionPointerReference) >= F.CODE_VIRTUAL);
   await breakpoint(client, fixture, ['KERNEL_READY']);
@@ -271,10 +271,10 @@ async function main() {
     const mappedProject = core.resolveProject(temporary, mapped.root, mapped.configuration, { nasm: process.env.NASM_PATH, qemu: process.env.QEMU_PATH, qemuArgs: ['-m', '32M'] });
     const mappedClient = new Client(mappedProject); clients.push(mappedClient);
     await mappedClient.launch();
-    assert.equal((await frame(mappedClient)).source.path, mapped.source);
+    assert.equal(await fs.realpath((await frame(mappedClient)).source.path), await fs.realpath(mapped.source));
     await breakpoint(mappedClient, mapped, ['KERNEL_READY']);
     await mappedClient.stoppedAfter('continue');
-    assert.equal((await frame(mappedClient)).source.path, mapped.source);
+    assert.equal(await fs.realpath((await frame(mappedClient)).source.path), await fs.realpath(mapped.source));
     assert.equal(await scalar(mappedClient, 'sample.left'), 17);
     assert.equal(await scalar(mappedClient, 'values[2]'), 3);
     await mappedClient.disconnect();

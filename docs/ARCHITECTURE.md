@@ -19,7 +19,11 @@
 ```mermaid
 flowchart TD
     VS[VS Code / DAP / Webview] --> Entry[extension.ts<br/>integration/vscode]
+    Entry --> Profiles[integration/vscode/machineProfiles<br/>按项目记忆选择 / 打开 JSON 编辑器]
+    Profiles --> ProfileConfig[project/machineProfiles<br/>校验 / 选择来源 / 显示配置]
+    ProfileConfig --> Project[project/model<br/>已选启动方案]
     Entry --> Composition[composition<br/>createAdapter / sessionServices]
+    Project --> Composition
     Composition --> DAP[integration/dap<br/>AssemblyDapAdapter / SourceDapAdapter]
     DAP --> Channel[DapChannel<br/>消息序列与请求队列]
     DAP --> Requests[视图 / 检查 / 机器断点请求]
@@ -39,6 +43,8 @@ flowchart TD
     Composition --> Source[backends/gdb<br/>GdbSourceAdapter]
     Source --> MI[QemuGdbBackend<br/>MiClient / miParser]
     Composition --> VM[backends/qemu<br/>QemuVirtualMachine]
+    VM --> MachineArgs[backends/qemu/arguments<br/>覆盖参数 / 启动配置诊断]
+    VM --> CpuModels[backends/qemu/cpuModels<br/>查询当前工具的 CPU 型号]
     Composition --> Decoder[backends/iced<br/>icedDecoder]
     Composition --> NASM[backends/nasm<br/>listing 解析 / 源码映射加载]
     NASM -. AssemblySourceLoader .-> Ports
@@ -61,6 +67,14 @@ flowchart TD
 `project` 管理配置、构建、诊断和安全创建。QEMU 参数生成留在 `backends/qemu/arguments.ts`，没有混入项目通用逻辑。显示控制和观察器仍保留在 `display`、`inspector`，由 VS Code 集成入口连接；VS Code 观察器注册、示例创建及构建诊断分别由 `integration/vscode` 的功能模块负责。`inspector/model.ts` 管理刷新状态；`snapshots.ts` 读取与提交快照；`validation.ts` 校验响应，`types.ts` 定义视图数据。只有确认响应属于当前暂停后才更新内存差异历史。
 
 `application/source/values.ts` 拥有 C 栈帧和变量句柄；[machineValues.ts](../src/application/source/machineValues.ts)单独读取当前 CPU 的寄存器、模式和原始栈，避免把这些状态解释成历史调用帧的数据。[display/frames.ts](../src/display/frames.ts)负责有界图像校验、PNG 编码和单帧复用，不承担 QMP 连接或面板生命周期。
+
+## 启动方案如何进入会话
+
+[project/machineProfiles.ts](../src/project/machineProfiles.ts)定义小配置模型并校验项目字段，保存选择名称、来源和字段值；它不认识 QEMU 命令行。VS Code 的 [MachineProfiles](../src/integration/vscode/machineProfiles.ts)负责项目选择、Quick Pick、按工作区 URI 与项目根记住手选，以及打开带 [JSON Schema](../schemas/qemu-asm.schema.json) 的真实项目文件。
+
+每次启动或重启重新读取项目并解析优先级：`launch.json` 指定 → 项目手选 → 项目默认 → 原有设置。显式指定的方案在同一调试会话重启时保持名称并重读值；普通启动重读当前选择。解析结果随本次 `Project` 进入资源工厂，显示资源也按该项目配置分配；`display: false` 不创建 QMP 连接。资源属于本次会话，不因修改手选立即改变在运行的虚拟机。
+
+[arguments.ts](../src/backends/qemu/arguments.ts)在 QEMU 实现侧用方案字段替换对应的 `-m` / `-cpu`，保留未覆盖的旧参数，并生成带来源的诊断数据；未知的 QEMU 默认内存和 CPU 保留为未查询。[cpuModels.ts](../src/backends/qemu/cpuModels.ts)用同一工具路径查询 `-cpu help`，在启动前验证显式方案的 CPU 型号，查询和取消都由本次 VM 的 `Processes` 管理。公共 `VirtualMachine` 契约没有增加原始命令或为每个配置新增方法，寄存器、内存、变量消费者不需改变。
 
 ## 小能力如何组合
 
@@ -133,8 +147,8 @@ sequenceDiagram
 | --- | --- | --- |
 | `integration/dap/assemblyAdapter.ts` | 453 / 460 | 保留启动、暂停、临时断点和 epoch 的协调；listing 加载、源码验证、F10 规划、断点请求和资源归属已拆出 |
 | `integration/dap/sourceAdapter.ts` | 425 / 430 | 保留 C 启动、源码断点更新期间的暂停/恢复与停止事件顺序；请求验证、变量句柄、绑定与资源归属独立 |
-| `backends/qemu/rspBackend.ts` | 379 / 380 | 保留跨硬件断点单步与停止状态机；协议传输/编码/寄存器布局、断点替换、物理内存事务分别独立 |
-| `backends/gdb/qemuBackend.ts` | 359 / 365 | 保留 MI 启动取消、停止事件和同值写监视点恢复；配置、寄存器、内存、源码转换和 MI transport/parser 已拆开 |
+| `backends/qemu/rspBackend.ts` | 380 / 380 | 保留跨硬件断点单步与停止状态机；协议传输/编码/寄存器布局、断点替换、物理内存事务分别独立 |
+| `backends/gdb/qemuBackend.ts` | 360 / 365 | 保留 MI 启动取消、停止事件和同值写监视点恢复；配置、寄存器、内存、源码转换和 MI transport/parser 已拆开 |
 
 没有把这些状态机再拆成依赖大量私有字段的上下文对象或继承层。它们不作为后续功能的默认容器；新能力仍按独立契约、实现、组装和消费者接入。架构测试同时禁止业务层导入 `debug/` 或 `core.ts` 兼容入口，以及领域/契约反向依赖应用或编辑器层。
 

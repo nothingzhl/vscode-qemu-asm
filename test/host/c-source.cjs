@@ -67,7 +67,7 @@ exports.run = async function() {
     const extension = vscode.extensions.getExtension('nothingzhl.vscode-qemu-asm'); assert(extension);
     if (process.env.QEMU_ASM_VSIX_EXTENSION) {
       assert.equal(await fs.realpath(extension.extensionPath), await fs.realpath(extensionRoot));
-      assert.equal(path.dirname(__filename), path.join(process.env.QEMU_ASM_VSIX_TEST_ROOT, 'external-tests'));
+      assert.equal(await fs.realpath(path.dirname(__filename)), await fs.realpath(path.join(process.env.QEMU_ASM_VSIX_TEST_ROOT, 'external-tests')));
     }
     assert.equal(extension.isActive, false);
     await vscode.commands.executeCommand('qemuAsm.showInspector');
@@ -103,7 +103,7 @@ exports.run = async function() {
       return variables(scope.variablesReference);
     };
     let stack = await frames();
-    assert.match(stack[0].name, /kernel_main/); assert.equal(path.resolve(stack[0].source.path), path.resolve(project.source));
+    assert.match(stack[0].name, /kernel_main/); assert.equal(await fs.realpath(stack[0].source.path), await fs.realpath(project.source));
     assert(current.responses.some(response => response.command === 'setBreakpoints' && response.body?.breakpoints.some(item => item.verified)), JSON.stringify(current.responses.filter(response => response.command === 'setBreakpoints')));
     await stoppedAfter('continue'); stack = await frames(); assert.equal(stack[0].line, callLine);
     console.log('C source host: actual native CALL_NESTED breakpoint stopped');

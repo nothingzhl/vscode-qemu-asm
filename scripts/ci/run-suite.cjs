@@ -12,7 +12,7 @@ const native = [
   'physical-memory-integration', 'paging-integration', 'display-integration'
 ];
 const suites = {
-  full: [...native, 'c-machine-integration', 'c-source-integration', 'dependency-integration'],
+  full: [...native, 'c-machine-integration', 'c-source-integration', 'dependency-integration', 'machine-profiles-integration'],
   native,
   host: ['host-test']
 };

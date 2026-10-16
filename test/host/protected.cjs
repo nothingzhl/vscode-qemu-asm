@@ -107,7 +107,7 @@ exports.run = async function() {
     const trace = await record.session.customRequest('stackTrace', { threadId: 1 });
     assert(trace.stackFrames.length > 0);
     const frame = trace.stackFrames[0];
-    assert.equal(path.resolve(frame.source.path), path.resolve(source));
+    assert.equal(await fs.realpath(frame.source.path), await fs.realpath(source));
     const { scopes } = await record.session.customRequest('scopes', { frameId: frame.id });
     const registersScope = scopes.find(scope => /register|寄存器/i.test(scope.name));
     assert(registersScope, 'registers scope must be exposed');

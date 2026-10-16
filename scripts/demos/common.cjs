@@ -214,4 +214,4 @@ async function runDemo(options) {
     else await fs.rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
-module.exports = { runDemo, until, inView };
+module.exports = { runDemo, until, inView, connect, freePort, resizeWindow };

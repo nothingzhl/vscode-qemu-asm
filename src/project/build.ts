@@ -134,6 +134,13 @@ export async function build(
     }
   }
   const temp = await fs.mkdtemp(path.join(path.dirname(project.image), '.qemu-asm-'));
+  // Windows NASM can use ANSI argv. Keep a Unicode project root in cwd,
+  // which Node passes through CreateProcessW, rather than repeating it in argv.
+  const nasmPath = (file: string) => {
+    if (processes.host.identity.platform !== 'win32') return file;
+    const relative = path.relative(project.root, file);
+    return path.isAbsolute(relative) ? file : `.${path.sep}${relative}`;
+  };
   try {
     const output = path.join(temp, 'boot.img');
     const stageBuffers: Buffer[] = [];
@@ -146,7 +153,10 @@ export async function build(
       await execute(
         processes,
         project.nasm,
-        ['-f', 'bin', stage.source, '-o', stageOutput, ...(stageListing ? ['-l', stageListing] : [])],
+        [
+          '-f', 'bin', nasmPath(stage.source), '-o', nasmPath(stageOutput),
+          ...(stageListing ? ['-l', nasmPath(stageListing)] : [])
+        ],
         project.root,
         log
       );
@@ -183,10 +193,10 @@ export async function build(
       [
         '-f',
         'bin',
-        project.source,
+        nasmPath(project.source),
         '-o',
-        output,
-        ...(listingPath ? ['-l', listingPath] : []),
+        nasmPath(output),
+        ...(listingPath ? ['-l', nasmPath(listingPath)] : []),
         ...(stageUnits.length ? ['-D', `STAGE2_SECTORS=${Math.ceil(stageUnits[0].size / 512)}`] : [])
       ],
       project.root,

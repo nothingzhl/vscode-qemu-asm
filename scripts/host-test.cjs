@@ -31,8 +31,8 @@ async function main() {
   const extensionRoot = path.resolve(__dirname, '..');
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'qemu asm host, '));
   try {
-    const supportedPhases = ['trusted', 'untrusted', 'resources', 'debug', 'display', 'protected', 'inspection', 'machine', 'paging', 'c-source', 'dependencies'];
-    const phases = process.env.QEMU_ASM_HOST_PHASES === undefined ? supportedPhases.filter(phase => !['c-source', 'dependencies'].includes(phase) || process.platform === 'linux') : process.env.QEMU_ASM_HOST_PHASES.split(',').map(phase => phase.trim()).filter(Boolean);
+    const supportedPhases = ['trusted', 'untrusted', 'resources', 'debug', 'display', 'protected', 'inspection', 'machine', 'paging', 'c-source', 'dependencies', 'machine-profiles'];
+    const phases = process.env.QEMU_ASM_HOST_PHASES === undefined ? supportedPhases.filter(phase => !['c-source', 'dependencies', 'machine-profiles'].includes(phase) || process.platform === 'linux') : process.env.QEMU_ASM_HOST_PHASES.split(',').map(phase => phase.trim()).filter(Boolean);
     if (!phases.length || phases.some(phase => !supportedPhases.includes(phase))) throw new Error(`QEMU_ASM_HOST_PHASES must name one or more phases: ${supportedPhases.join(', ')}`);
     const executable = process.env.VSCODE_EXECUTABLE_PATH || await downloadAndUnzipVSCode(process.env.VSCODE_VERSION || 'stable');
     for (const phase of phases) {
@@ -51,7 +51,7 @@ async function main() {
         'update.mode': 'none'
       }));
       let workspace = root;
-      if (phase === 'resources') {
+      if (['resources', 'machine-profiles'].includes(phase)) {
         workspace = path.join(temporary, phase, 'resources.code-workspace');
         await fs.writeFile(workspace, JSON.stringify({ folders: [{ path: root }, { path: other }] }));
       }

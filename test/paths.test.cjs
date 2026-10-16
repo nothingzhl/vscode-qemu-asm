@@ -26,7 +26,8 @@ for (const [platform, api, workspace, absoluteTool] of [
   assert.equal(p.nasm,api.join(workspace,'Tool Box','nasm')); assert.equal(p.qemu,absoluteTool);
   const diagnostic=parseErrors(`${p.source}:42: error: bad\r\n`,p.root)[0];
   assert.equal(diagnostic.file,p.source); assert.equal(diagnostic.line,41);
-  assert(qemuArguments(p).includes(`file=${p.image},format=raw,if=floppy,readonly=on`));
+  const drive=platform==='Windows'?'.\\out\\boot image.img':p.image;
+  assert(qemuArguments(p,{identity:{platform:platform==='Windows'?'win32':platform==='macOS'?'darwin':'linux'},paths:api}).includes(`file=${drive},format=raw,if=floppy,readonly=on`));
   assert.equal(resolveProject(workspace,'.',{}).nasm,'nasm');
   assert.throws(()=>resolveProject(workspace,'.',{image:'../outside.img'}),/项目内/);
  });

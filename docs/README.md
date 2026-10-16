@@ -7,7 +7,7 @@
 | 文档 | 解决的问题 |
 | --- | --- |
 | [快速开始](QUICKSTART.md) | 安装后如何完成第一次构建、运行和断点调试 |
-| [配置参考](CONFIGURATION.md) | 工具路径、项目目录、NASM 阶段、外部构建和 ELF/DWARF |
+| [配置参考](CONFIGURATION.md) | 工具路径、多套启动方案、NASM 阶段、外部构建和 ELF/DWARF |
 | [调试指南](DEBUGGING.md) | 汇编/C 单步、调用栈、内存、描述符、页表、显示器及功能边界 |
 | [常见问题](TROUBLESHOOTING.md) | 环境、构建、断点、显示器与远程宿主问题 |
 | [兼容性](COMPATIBILITY.md) | 平台、工具版本、实际验证与 CI 矩阵的区别 |
@@ -18,7 +18,8 @@
 | 文档 | 解决的问题 |
 | --- | --- |
 | [开发指南](DEVELOPMENT.md) | 源码运行、测试层次、独立 VSIX 验证和打包 |
-| [本轮质量验收](QUALITY_VALIDATION.md) | 代码清理、测试覆盖、真实集成、性能与 CI 的本次结果 |
+| [启动方案验收](MACHINE_PROFILES_VALIDATION.md) | 0.9.0 的真实截图、配置行为、工具版本与安装包验证 |
+| [质量基线验收](QUALITY_VALIDATION.md) | 上一轮代码清理、测试覆盖、真实集成、性能与 CI 结果 |
 | [插件架构](ARCHITECTURE.md) | 能力契约、实现组装、依赖方向与资源生命周期 |
 | [代码结构](STRUCTURE.md) | 当前目录与文件职责 |
 | [性能](PERFORMANCE.md) | 可重复测量、内存范围和回归检查 |

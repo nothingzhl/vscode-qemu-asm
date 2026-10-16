@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 const core = require('../../dist/core');
 const { DebugRuntime, instructionAddress } = require('../../dist/debug/runtime');
 const source = require('../c-source-integration.cjs');
+const { exerciseAssembly } = require('../machine-profiles-integration.cjs');
 const { stopped, capability } = require('../dependency-integration.cjs');
 
 function argument(name, fallback) {
@@ -78,6 +79,9 @@ async function main() {
     capability(inspected, 'qemu.physicalMemory', 'supported', 'protocol');
     await assembly.dispose();
     result.checks.push({ name: 'NASM build, RSP breakpoint, registers and physical memory without GDB', status: 'passed' });
+
+    const startupProfiles = await exerciseAssembly(temporary, { nasm: tools.nasm, qemu: tools.qemu });
+    result.checks.push({ name: 'Startup profiles: real 16/64 MiB RAM, qemu32/pentium3 CPU, display/QMP, restart and missing CPU cleanup', status: 'passed', ...startupProfiles });
 
     const fixture = await source.fixture(path.join(temporary, 'C source with spaces'));
     const cProject = core.resolveProject(temporary, fixture.root, fixture.configuration, {

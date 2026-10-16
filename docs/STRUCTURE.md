@@ -1,6 +1,6 @@
 # 当前代码结构
 
-分支：`refactor/capability-architecture`。本清单对应当前生产文件，包含本轮变量与显示性能整理，不包含生成的 dist 或 node_modules。
+本清单对应当前生产文件，包含启动方案的配置、选择与 QEMU 适配，不包含生成的 dist 或 node_modules。
 
 | 目录 | 职责 |
 | --- | --- |
@@ -11,7 +11,7 @@
 | `integration` | DAP / VS Code 请求、注册与展示接入 |
 | `backends` | NASM、RSP、QEMU、GDB/MI、iced-x86 的实现细节 |
 | `platform` | 宿主、进程、网络端点 |
-| `project` | 配置、构建、安全创建及模板 |
+| `project` | 项目与启动方案配置、构建、安全创建及模板 |
 | `dependencies` | 工具解析、检查和能力事实记录 |
 | `display` / `inspector` | 显示器与调试观察器 |
 | `debug` / `core.ts` | 兼容旧集成入口，生产代码不依赖 |
@@ -67,6 +67,7 @@ src/
 │   │   └── sources.ts
 │   ├── qemu/
 │   │   ├── arguments.ts
+│   │   ├── cpuModels.ts
 │   │   ├── monitor.ts
 │   │   ├── rspBackend.ts
 │   │   ├── rspBreakpoints.ts
@@ -142,6 +143,7 @@ src/
 │       ├── displaySession.ts
 │       ├── examples.ts
 │       ├── inspector.ts
+│       ├── machineProfiles.ts
 │       └── projects.ts
 ├── platform/
 │   ├── host.ts
@@ -166,9 +168,10 @@ src/
 │   ├── config.ts
 │   ├── create.ts
 │   ├── diagnostics.ts
+│   ├── machineProfiles.ts
 │   └── model.ts
 ├── core.ts
 └── extension.ts
 ```
 
-`test/` 包含单元、架构边界、文件预算与宿主行为测试；`scripts/` 包含真实工具、VS Code 和独立安装包验证入口；`media/` 保存 Webview 资源；`docs/` 保存架构、验证与功能演示记录。
+`schemas/qemu-asm.schema.json` 为项目 JSON 提供补全、字段说明与静态校验；运行前的语义和 CPU 型号校验仍由生产代码执行。`test/` 包含单元、架构边界、文件预算与宿主行为测试；`scripts/` 包含真实工具、VS Code 和独立安装包验证入口；`media/` 保存 Webview 资源；`docs/` 保存架构、验证与功能演示记录。

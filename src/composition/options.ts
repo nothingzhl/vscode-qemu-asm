@@ -13,7 +13,7 @@ export interface AdapterOptions {
   getProject: () => Promise<Project>;
   isTrusted: () => boolean;
   log?: (text: string) => void;
-  createDisplay?: () => Promise<QemuDisplay | undefined>;
+  createDisplay?: (project: Project) => Promise<QemuDisplay | undefined>;
   buildProject?: typeof build;
   runtimeFactory?: (project: Project, log: (text: string) => void, args: string[]) => AssemblyBackend;
 }

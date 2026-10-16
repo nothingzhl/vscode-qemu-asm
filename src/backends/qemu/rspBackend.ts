@@ -13,6 +13,7 @@ import { RspMemory } from './rspMemory';
 import { stoppedEvent } from './rspStopped';
 import { readTarget } from './rspTarget';
 import { expectOK } from './rspValidation';
+import { qemuMachineArguments } from './arguments';
 export { stoppedEvent } from './rspStopped';
 
 import { AssemblyBackend, DataWatchpoint, StoppedEvent } from '../../ports/machine';
@@ -61,7 +62,7 @@ export class QemuRspBackend extends EventEmitter implements AssemblyBackend {
       backend: 'nasm-rsp',
       host: localHost.identity,
       tools,
-      machine: project.qemuArgs
+      machine: qemuMachineArguments(project)
     });
     this.memory = new RspMemory(() => this.requireStopped(), this.capabilities);
   }
