@@ -19,6 +19,7 @@
 | 文档 | 解决的问题 |
 | --- | --- |
 | [开发指南](DEVELOPMENT.md) | 源码运行、测试层次、独立 VSIX 验证和打包 |
+| [Tilck 接入与验证](TILCK_VALIDATION.md) | CMake 高地址内核、GRUB ISO、源码映射和三层自动化闭环 |
 | [插件架构](ARCHITECTURE.md) | 能力契约、实现组装、依赖方向与资源生命周期 |
 | [代码结构](STRUCTURE.md) | 当前目录与文件职责 |
 | [性能](PERFORMANCE.md) | 可重复测量、内存范围和回归检查 |

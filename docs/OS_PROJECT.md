@@ -55,4 +55,6 @@ make -C /tmp/dreamos-toolkit -f qemu-toolkit.mk toolkit-iso
 
 ## 复用到其他工程
 
+第二个已接入工程为 [Tilck](TILCK_VALIDATION.md)，使用 CMake、musl 工具链和高虚拟地址分页内核，保留上游构建与链接布局。它与本例使用同一套外部构建、ISO、ELF 和源码映射能力；具体执行范围见其验证记录。
+
 为自己的工程提供构建命令、可引导 ISO、带 DWARF 的 i386 ELF32，以及合适的入口即可；不需要采用 DreamOS 的目录布局。插件当前不支持 ELF64、PIE、UEFI-only ISO、动态符号重定位或多 CPU。构建配方能运行、协议测试通过和 VS Code 界面验收是不同证据范围，实际执行结果须查看对应验证记录。

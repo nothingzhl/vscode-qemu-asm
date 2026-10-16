@@ -1,4 +1,4 @@
-# 第二个真实工程：Tilck 构建与原生调试基线
+# 第二个真实工程：Tilck 接入与验证
 
 本阶段验证 [Tilck](https://github.com/vvaltchev/tilck) 的固定提交 `01dacaa51a074474a4e5491fc80addfe98956500`。它是使用 C/C++/GAS、CMake 和 musl 交叉工具链的实际内核，提供进程、调度、文件系统与部分 Linux 系统调用。上游采用 BSD-2-Clause；本仓库只保存验证脚本，不复制内核。
 
@@ -57,6 +57,31 @@ npm run test:tilck:baseline
 
 本次原始日志为 `/tmp/tilck-slim-build.log`（含首次打包的跨挂载点硬链接失败）、`/tmp/tilck-slim-resume.log`（完整构建通过）和 `/tmp/tilck-native-baseline.log`（原生调试通过）。这些是本地执行证据，不代表插件适配器、VS Code 宿主、安装 VSIX 或远端 CI 已通过。
 
-## 下一阶段
+## ISO 与插件接入
 
-原生基线通过后，再增加 BIOS GRUB ISO 打包配方与 `qemu-asm.json`，沿用已有外部构建和 ELF 配置。逐层验证高地址源码断点、变量、调用栈、单步、非恒等虚实地址观察及修改后重启；遇到差异修复通用能力，不加入 Tilck 专用的生产逻辑。完整上游 CI 镜像不直接加入每次 PR 的默认任务。
+构建基线通过后，将 [项目配置](../examples/tilck/qemu-asm.json)、[外部构建脚本](../examples/tilck/tilck-iso.cjs)和 [GRUB 菜单](../examples/tilck/grub.cfg)复制到自己的 Tilck 源码根目录；不要覆盖已有配置。脚本重新执行 `cmake --build build --parallel 2`，用 `grub-mkrescue` 打包原有 `tilck` 和 `fatpart`，生成 `build/tilck-toolkit.iso` 与同次构建的 `build/tilck-toolkit.elf`。编译或 ISO 打包失败时保留之前的已发布产物，插件中止本次启动。
+
+构建还需要 BIOS GRUB 工具（Ubuntu 的 `grub-pc-bin`、`grub-common`）、xorriso 和 Node.js。它们是本例构建工具，不是插件运行 C 调试的额外依赖。可显式设置 `TILCK_CMAKE`、`GRUB_MKRESCUE` 的可执行路径，使用已有工具或自己的包装器；插件不会强制 Docker 或替换 PATH。容器构建时请映射源码和输出，确保包装器等待构建完成并传递失败退出码。若工具依赖其他可执行文件，也需在包装器或当前扩展宿主 PATH 中显式准备好。
+
+默认配置停在 `kmain`，RAM 为 128 MiB，关闭显示器。`debug.sourceMap` 将构建容器中的 `/work` 映射到本地根目录；若在其他路径构建，请按实际 DWARF 路径调整。打开并信任工程后执行 **QEMU Assembly: 开始引导调试**。修改源码后重启会重新构建并打包；手动构建后可设置 `build: false`，使用匹配的现有 ISO/ELF。
+
+## 自动化闭环
+
+测试使用专用、固定版本且内核源码干净的 Tilck checkout。它暂时修改 `kernel/main.c` 中已有变量的初始值并在结束时恢复；不要指向日常开发工作副本。两个验收进程不能共享该 checkout：脚本使用排他锁阻止并发编辑。非正常强制终止后，应先核对源码和仍在运行的进程，再清理遗留的 `.tilck-toolkit-test.lock`。Tilck 构建源码路径仍要求无空格；测试另外创建含空格和逗号的插件工作区，引用外部源码和构建目录。
+
+```sh
+export TILCK_SOURCE=/path/to/dedicated-tilck-checkout
+# 可选：设置 TILCK_CMAKE、GRUB_MKRESCUE、QEMU_PATH、GDB_PATH
+npm run test:tilck
+export VSCODE_EXECUTABLE_PATH=/path/to/existing/code
+xvfb-run -a npm run test:tilck:host
+OS_PROJECT_KIND=tilck xvfb-run -a node scripts/os-project-installed.cjs /path/to/candidate.vsix
+```
+
+三层共用同一套实际断言：高地址源码断点、参数和局部变量、嵌套调用栈、单步/步入/步出、非恒等分页映射与虚实内存对照；修改初值后重启，核对运行值、ISO/ELF 哈希和再次命中断点；恢复源码后再重启，检查原值恢复。宿主另验证停止会话后以 `build: false` 再次启动；适配器层另验证失败构建不启动 QEMU/GDB、已有产物保持不变以及子进程清理。这里验证 VS Code 调试 API 接入，不代替鼠标和快捷键界面操作验收。
+
+独立的 [Tilck 工作流](../.github/workflows/tilck.yml)只支持手动触发。固定源码提交、GCC 与宿主环境，缓存上游工具链并在工具准备成功后立即保存；后续构建或测试失败不会丢失已准备的工具。它不加入每次 PR 的默认任务，也不拉取完整上游 CI 镜像。远端结果与本地结果应分别报告。
+
+本次 Linux x64 执行：实际 ISO 适配器、VS Code 1.96.4 开发宿主与独立安装 VSIX 均通过上述调试和修改/恢复后重启场景。QEMU 10.0.13、GDB 16.3；无 NASM 配置参与外部构建。插件工作区路径包含空格与逗号，源码编译保留上游无空格路径。宿主最初因其 PATH 未包含本地 xorriso 包装器而打包失败，显式在 GRUB 包装器中指定 xorriso 后通过；没有修改插件的 PATH 或工具选择规则。
+
+三层日志保存在 `artifacts/tilck/tilck-integration.log`、`artifacts/tilck/tilck-host.log`、`artifacts/tilck/tilck-installed.log`（本地忽略的执行产物）。构建配方另有单元验证，覆盖编译/ISO 打包失败保留既有产物、清理 staging 目录，以及并发验收锁。新增手动工作流通过 actionlint，本次未在 GitHub 触发运行；也没有新增 macOS/Windows 或其他 VS Code 版本的兼容性结论。生产能力契约、后端、组装和生命周期实现均未增加 Tilck 分支。

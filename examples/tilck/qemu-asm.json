@@ -1,0 +1,16 @@
+{
+  "image": "build/tilck-toolkit.iso",
+  "boot": { "type": "iso" },
+  "build": {
+    "command": "node",
+    "args": ["tilck-iso.cjs", ".", "build/tilck-toolkit.iso"],
+    "timeout": 180000
+  },
+  "debug": {
+    "elf": "build/tilck-toolkit.elf",
+    "entry": "kmain",
+    "sourceMap": { "/work": "." }
+  },
+  "machineProfiles": { "debug": { "memoryMiB": 128, "display": false } },
+  "defaultMachineProfile": "debug"
+}

@@ -54,6 +54,8 @@
     "test:os-project": "npm run compile && node scripts/os-project-integration.cjs",
     "test:os-project:host": "npm run compile && node scripts/os-project-host.cjs",
     "test:tilck:baseline": "node scripts/tilck-baseline.cjs",
+    "test:tilck": "npm run compile && node scripts/tilck-integration.cjs",
+    "test:tilck:host": "npm run compile && node scripts/tilck-host.cjs",
     "test:profiles": "npm run compile && node scripts/machine-profiles-integration.cjs",
     "test:vsix:profiles": "node scripts/vsix-machine-profiles-test.cjs",
     "test:profiles:ui": "npm run compile && node scripts/machine-profiles-ui-test.cjs"
