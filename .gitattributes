@@ -1,0 +1,2 @@
+# Keep the actual fixed-column NASM 2.14 listing fixture byte-for-byte.
+test/fixtures/nasm-2.14-repetitions.lst whitespace=-blank-at-eol

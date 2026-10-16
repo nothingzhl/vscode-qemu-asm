@@ -24,6 +24,7 @@ export async function buildSourceMaps(
         parseListing(await fs.readFile(unit.listingPath, 'utf8'), sourcePath, source, {
           loadAddress: unit.loadAddress,
           maxBytes: unit.size,
+          byteLength: unit.size,
           initialBits: maps.length === 0 ? 16 : 'auto'
         })
       );
