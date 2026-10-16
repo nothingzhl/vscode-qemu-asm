@@ -9,8 +9,20 @@
     "vscode": "^1.96.0"
   },
   "categories": [
-    "Other"
+    "Debuggers"
   ],
+  "keywords": [
+    "qemu",
+    "osdev",
+    "kernel",
+    "assembly",
+    "nasm",
+    "debugger"
+  ],
+  "homepage": "https://github.com/nothingzhl/vscode-qemu-asm#readme",
+  "bugs": {
+    "url": "https://github.com/nothingzhl/vscode-qemu-asm/issues"
+  },
   "main": "./dist/extension.js",
   "repository": {
     "type": "git",
@@ -294,5 +306,6 @@
   ],
   "dependencies": {
     "iced-x86": "1.21.0"
-  }
+  },
+  "license": "Apache-2.0"
 }

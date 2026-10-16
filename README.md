@@ -1,5 +1,7 @@
 # QEMU Assembly Toolkit
 
+源码使用 [Apache-2.0 许可证](LICENSE)。
+
 面向操作系统开发的 VS Code 调试与机器状态诊断工具。当前支持 QEMU 上的 x86 引导程序和 32 位 C 内核：从源码断点、调用栈与变量，追踪到寄存器、内存、描述符、页表和客体画面。
 
 [快速开始](docs/QUICKSTART.md) · [配置](docs/CONFIGURATION.md) · [调试指南](docs/DEBUGGING.md) · [常见问题](docs/TROUBLESHOOTING.md) · [全部文档](docs/README.md)
