@@ -1,0 +1,57 @@
+name: Performance
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'media/**'
+      - 'scripts/performance/**'
+      - 'test/performance*.test.cjs'
+      - 'package*.json'
+      - '.github/workflows/performance.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'media/**'
+      - 'scripts/performance/**'
+      - 'test/performance*.test.cjs'
+      - 'package*.json'
+      - '.github/workflows/performance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  display-and-inspector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install real display tools
+        run: sudo apt-get update && sudo apt-get install -y nasm qemu-system-x86
+      - run: npm ci
+      - run: npm run compile
+      - name: Verify frame cache and disposal behavior
+        run: node --test test/performance-display.test.cjs test/performance-inspector.test.cjs
+      - name: Measure extension modules
+        run: node --expose-gc scripts/performance/run.cjs --enforce --output artifacts/performance/modules.json
+      - name: Measure real QEMU display pipeline
+        run: node --expose-gc scripts/performance/real-display.cjs --enforce --output artifacts/performance/real-display.json
+      - name: Check memory after repeated screen and inspector lifecycles
+        run: node --expose-gc scripts/performance/resources.cjs --enforce --output artifacts/performance/resources.json
+      - name: Upload measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-linux-node22
+          path: artifacts/performance/*.json
+          if-no-files-found: warn

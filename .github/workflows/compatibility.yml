@@ -1,0 +1,60 @@
+name: Tool compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tool-compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  distro-tools:
+    name: QEMU and GDB on Ubuntu ${{ matrix.ubuntu }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Distribution release series deliberately cover older tool generations.
+        # result.json records exact package versions; these are not support floors.
+        ubuntu: ['20.04', '22.04', '24.04']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run compile
+      - name: Test real distribution QEMU and GDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          compatibility_output="$RUNNER_TEMP/compatibility-${{ matrix.ubuntu }}"
+          mkdir -p "$compatibility_output"
+          docker run --rm \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/repo,readonly" \
+            --mount "type=bind,src=$(readlink -f "$(command -v node)"),dst=/usr/local/bin/node,readonly" \
+            --mount "type=bind,src=$compatibility_output,dst=/results" \
+            -e COMPATIBILITY_LABEL="ubuntu-${{ matrix.ubuntu }}" \
+            --workdir /repo "ubuntu:${{ matrix.ubuntu }}" \
+            bash /repo/scripts/compatibility/container.sh \
+            2>&1 | tee "$compatibility_output/run.log"
+      - name: Summarize exact versions and capability evidence
+        if: always()
+        shell: bash
+        run: node scripts/compatibility/summary.cjs "$RUNNER_TEMP/compatibility-${{ matrix.ubuntu }}/result.json" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-ubuntu-${{ matrix.ubuntu }}
+          path: ${{ runner.temp }}/compatibility-${{ matrix.ubuntu }}/
+          if-no-files-found: warn
+          retention-days: 14

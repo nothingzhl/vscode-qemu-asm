@@ -1,3 +1,5 @@
+// White-box state fixtures install ownership as well as a backend.
+function ownBackend(adapter, backend) { adapter.resources.owned = { backend }; return backend; }
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { AssemblyDebugAdapter } = require('../dist/debug/adapter');
@@ -49,9 +51,9 @@ function fixture(t, changes = {}) {
     { line: 20, address: 0x8020, size: 1, text: 'nop', bits: 32 }
   ], 0x21);
   const adapter = new AssemblyDebugAdapter({ isTrusted: () => true, getProject: async () => { throw new Error('unused'); } });
-  adapter.runtime = runtime;
-  adapter.map = map;
-  adapter.maps = new SourceMaps([map]);
+  ownBackend(adapter, runtime);
+  adapter.sources.map = map;
+  adapter.sources.maps = new SourceMaps([map]);
   adapter.phase = 'stopped';
   let sequence = 1;
   t.after(() => adapter.dispose());

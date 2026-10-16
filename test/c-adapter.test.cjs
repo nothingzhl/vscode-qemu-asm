@@ -25,7 +25,7 @@ function client(t, options = {}) {
         adapter.handleMessage({ type: 'request', seq, command, arguments: args });
       });
     },
-    async settled() { await new Promise(resolve => setImmediate(resolve)); await adapter.queue; }
+    async settled() { await new Promise(resolve => setImmediate(resolve)); await adapter.channel.queue; }
   };
 }
 class ControlledGdb extends EventEmitter {
@@ -127,7 +127,7 @@ test('delayed native scopes and evaluations after F11 never reuse an expired fra
   assert(c.runtime.commands.includes('-exec-step'));
   c.runtime.stop({ reason: 'end-stepping-range', frame: { addr: '0xc0000024', func: 'nested', line: '9' } }); await c.settled();
 
-  const before = [...c.runtime.commands], nextHandle = c.adapter.handleSerial;
+  const before = [...c.runtime.commands], nextHandle = c.adapter.values.handleSerial;
   for (const frame of previousFrames) {
     const scopes = await c.request('scopes', { frameId: frame.id });
     assert.equal(scopes.success, true); assert.deepEqual(scopes.body.scopes, []);
@@ -138,7 +138,7 @@ test('delayed native scopes and evaluations after F11 never reuse an expired fra
     assert.equal(evaluation.body.error.showUser, false);
   }
   assert.deepEqual(c.runtime.commands, before, 'expired reads must not request new frames or create GDB variables');
-  assert.equal(c.adapter.handleSerial, nextHandle); assert.equal(c.adapter.handles.size, 0);
+  assert.equal(c.adapter.values.handleSerial, nextHandle); assert.equal(c.adapter.values.handles.size, 0);
 
   const currentFrames = (await c.request('stackTrace')).body.stackFrames;
   assert.notEqual(currentFrames[0].id, previousFrames[0].id);
@@ -224,4 +224,35 @@ test('DWARF frame with file but no positive line never acquires a fabricated C s
   c.runtime.mi = async command => command.startsWith('-stack-list-frames') ? { type: 'result', class: 'done', results: { stack: [{ frame: { level: '0', addr: '0xc0000020', func: 'partially_described', fullname: '/tmp/kernel.c', line: '0' } }] } } : original(command);
   const frame = (await c.request('stackTrace')).body.stackFrames[0];
   assert.equal(frame.source, undefined); assert.equal(frame.line, 1); assert.equal(frame.instructionPointerReference, '0xC0000020');
+});
+
+test('disposing C DAP waits for a late display allocation and never launches its backend', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'c late allocation '));
+  const elf = path.join(root, 'kernel.elf');
+  await fs.writeFile(elf, Buffer.alloc(52));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  let open, entered;
+  const displayReady = new Promise(resolve => { open = resolve; });
+  const allocating = new Promise(resolve => { entered = resolve; });
+  let launched = 0, backendClosed = 0, displayClosed = 0;
+  const c = client(t, {
+    getProject: async () => ({ root, debug: { elf } }),
+    buildProject: async () => ({ units: [], imageBytes: 512 }),
+    createDisplay: async () => { entered(); await displayReady; return { args: [], async connect() {}, async dispose() { displayClosed++; } }; },
+    backendFactory: () => ({ async launch() { launched++; }, async dispose() { backendClosed++; } })
+  });
+  const launching = c.request('launch');
+  await allocating;
+  let stopped = false;
+  const stopping = c.adapter.dispose().then(() => { stopped = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(stopped, false);
+  open();
+  const [response] = await Promise.all([launching, stopping]);
+  assert.equal(response.success, false);
+  assert.match(response.message, /取消/);
+  assert.equal(launched, 0);
+  assert.equal(backendClosed, 1);
+  assert.equal(displayClosed, 1);
+  assert.equal(c.messages.filter(message => message.event === 'terminated').length, 1);
 });

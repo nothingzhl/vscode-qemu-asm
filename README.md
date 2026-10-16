@@ -1,166 +1,61 @@
 # QEMU Assembly Toolkit
 
-用于 VS Code 1.96+ 的 x86 汇编与操作系统开发调试工具。支持 NASM 引导项目，以及通过外部构建接入的 32 位 C 内核；提供源码断点、单步、寄存器、调用栈、内存、GDT/IDT、反汇编、数据断点、非 PAE 页表与右侧 QEMU 显示器。0.7.0 增加[基于 ELF/DWARF 的 C 源码调试、局部变量、结构体和数组查看](docs/C_SOURCE_VALIDATION.md)。项目通过 `qemu-asm.json` 配置；内置 NASM 模板用于检查环境，C 项目沿用自己的编译器和加载器。暂不提供语法高亮和补全。
+在 VS Code 中调试 x86 引导程序和 32 位 C 内核：设置断点、单步执行，查看寄存器、调用栈、内存和真实 QEMU 画面。
 
-0.8.0 开始[依赖隔离重构](docs/DEPENDENCY_REFACTOR.md)：统一工具解析与进程边界、按会话记录能力、可导出依赖报告、延迟加载解码器，并可关闭模拟显示器。
+[快速开始](docs/QUICKSTART.md) · [配置](docs/CONFIGURATION.md) · [调试指南](docs/DEBUGGING.md) · [常见问题](docs/TROUBLESHOOTING.md) · [全部文档](docs/README.md)
 
-## 功能演示
+![VS Code 中的保护模式断点、寄存器、栈和右侧 QEMU 显示器](docs/images/protected-live.png)
 
-[按功能查看 8 段录屏与 GIF](docs/demos/README.md)：构建与显示器、汇编调试、C 源码调试、反汇编、数据断点、内存、分页和描述符表。每段独立观看，附操作说明与录制环境。
+上图来自实际 Linux 调试会话。更多操作见 [8 段按功能录制的视频与 GIF](docs/demos/README.md)。
 
-## 安装与快速开始
+## 能做什么
 
-开发环境使用 Node.js 22。Ubuntu / Debian 安装工具：
+| 场景 | 能力 |
+| --- | --- |
+| NASM 引导程序 | 16/32 位源码断点、单步、寄存器、标志位、BP/EBP 调用链和原始栈 |
+| C 内核 | ELF/DWARF 源码断点、源码单步、调用栈、参数、局部变量、结构体、数组和指针 |
+| 观察机器状态 | 反汇编、地址/数据断点、虚拟/物理内存、GDT、IDT、IVT、非 PAE 页表 |
+| 查看客体画面 | 源码右侧的 QEMU VGA 显示器；可手动开启键盘输入 |
+| 接入自己的项目 | `qemu-asm.json` 配置 NASM 构建或已有外部构建命令 |
+
+当前针对单 CPU、x86 16/32 位客体和 BIOS raw 软盘引导。64 位、PAE、SMP、远程 attach、完整 C++ 调试和语法补全尚未提供。NASM 映射规则、只读能力及两条后端的差异见[调试范围](docs/DEBUGGING.md#支持范围)。
+
+## 安装
+
+1. 使用 VS Code **1.96 或更新版本**。
+2. 获取项目交付的 `.vsix` 文件，在 VS Code 扩展视图的 `…` 菜单选择 **从 VSIX 安装**。手上只有源码时，见[开发与打包](docs/DEVELOPMENT.md)。
+3. 在**扩展实际运行的宿主**安装对应工具：
+
+| 你要做的事 | 外部工具 |
+| --- | --- |
+| 构建、运行或调试 NASM 项目 | NASM、`qemu-system-i386` |
+| 用已有构建系统运行镜像 | QEMU、项目自己的构建工具 |
+| 调试 ELF/DWARF C 源码 | 在上一行基础上增加支持 i386 的 GNU GDB；编译器由项目管理 |
+
+NASM 调试不需要 GDB。安装 VSIX 的用户不需要 Node/npm、Python、FFmpeg 或另一个调试扩展。插件不会自动下载或安装外部工具。
+
+Ubuntu / Debian 的最小 NASM 环境可安装：
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y nasm qemu-system-x86
-npm ci
-npm run check
-npm run compile
+sudo apt-get install nasm qemu-system-x86
 ```
 
-在 VS Code 打开本仓库，按 F5 启动扩展开发宿主。在宿主中打开并信任一个本地文件夹，然后从命令面板依次执行：
+工具路径可在 `qemuAsm.nasmPath`、`qemuAsm.qemuPath`、`qemuAsm.gdbPath` 中配置。WSL、容器和 SSH 窗口内的工具需安装在对应扩展宿主。具体平台与版本的**实际执行结果**见[兼容性](docs/COMPATIBILITY.md)；配置了 CI 不等于该组合已验证通过。
 
-1. **QEMU Assembly: 检查环境**：按项目检查 NASM/QEMU/GDB 的路径、身份与版本，报告缺失项；外部构建器只解析路径。版本通过不表示调试协议已通过。
-2. 已有 NASM 项目可按下方[配置](#配置)添加 `qemu-asm.json`。需要最小项目检查环境时，执行 **QEMU Assembly: 创建引导项目**：选择目录，生成 `boot.asm` 和 `qemu-asm.json`，并保存该工作区的项目位置。也可用 **QEMU Assembly: 创建二阶段保护模式项目**，额外生成 `stage2.asm`。任一目标文件已存在则拒绝覆盖；若中途冲突，仅回滚本次创建的文件。
-3. **QEMU Assembly: 构建并运行**：保存文件、停止已有实例、重新构建，再通过 TCG 无界面启动 QEMU。单扇区示例在输出面板出现 `QEMU_ASM_BOOT_OK`，二阶段示例出现 `PROTECTED_MODE_OK`，表示已引导成功。
-4. **QEMU Assembly: 停止**：或点击状态栏，停止插件启动的进程。重复运行会先停止上一实例；扩展退出也会清理。
+## 五分钟跑通第一次调试
 
-也可单独执行 **QEMU Assembly: 构建**。NASM 错误显示于“问题”面板，可跳转到源码。日志在“输出 → QEMU Assembly”。NASM 单次工具执行超时为 15 秒；外部构建默认 120 秒，可配置。失败会清除旧镜像，运行命令始终重新构建，不运行失败前的产物。
+1. 在 VS Code 打开并信任一个空文件夹。
+2. 打开命令面板，执行 **QEMU Assembly: 检查环境**，确认 NASM 和 QEMU 可用。
+3. 执行 **QEMU Assembly: 创建引导项目**，选择该目录。已有同名文件会拒绝覆盖。
+4. 打开 `boot.asm`，执行 **QEMU Assembly: 开始引导调试**；默认停在 `0x7c00`。
+5. 按 F11 单步，在左侧“变量”看寄存器和栈；按 F5 继续，右侧显示器和输出日志应出现 `QEMU_ASM_BOOT_OK`。结束时执行 **QEMU Assembly: 停止**。
 
-安装分发版本时，可在仓库根目录执行 `npx @vscode/vsce package` 生成 VSIX，然后通过 VS Code 的“扩展：从 VSIX 安装”安装。不自动发布 Marketplace。
-
-## 调试 NASM 引导项目
-
-1. 创建引导项目后打开 `boot.asm`，在可执行指令行的左侧点击设置断点（F9）。`.asm` 文件会识别为“NASM（操作系统学习）”；已有其他汇编插件时，可在右下角手动选择该语言模式。
-2. 执行 **QEMU Assembly: 开始引导调试**，或在“运行和调试”中选择 **QEMU 16/32 位引导调试**。插件会保存文件、重新构建，并在 BIOS 引导到 `0x7c00` 后暂停。
-3. 使用 F5 继续、F10 单步跳过、F11 单步进入、Shift+F11 跳出；可随时暂停。F10 遇到 CALL / INT 会运行到下一条指令，期间用户断点仍然生效。
-4. 在“变量 → 寄存器”查看 AX/EAX、SP/ESP、BP/EBP、段寄存器与 EFLAGS，展开 EFLAGS 查看 CF/ZF/IF 等标志位。栈内存按当前代码模式显示 16 位字或 32 位双字；指令地址和栈地址使用 CPU 的实际段缓存。“CPU 模式与地址”显示当前模式、代码/栈指针位数、线性地址和 CR0.PE/PG；寄存器中也可查看 CR0/2/3/4、EFER 及段缓存的 base/limit/flags。
-5. “调用堆栈”显示当前指令与可验证的 BP/EBP 调用者链；在“监视”或调试控制台中输入 `AX`、`$eax`、`CS:IP`、`CS:EIP`、`SS:SP`、`SS:ESP`、`mode` 或 `[0x7bfa]`。方括号表达式读取该虚拟线性地址的 16 位内存值，`dword[0x8fff0]` 读取 32 位值；开启分页后按当前 CPU 地址空间读取。
-6. 暂停时寄存器、栈和源码位置会刷新；运行期间先暂停再读取 CPU 状态。调试控制台记录每次停下的段地址、线性地址和源码行。可用调试工具栏重启/停止，也可执行插件的停止命令。
-
-单扇区示例包含 `write_char` 函数及 `push bp / mov bp, sp` 栈帧。在函数内 `push ax` 后打断点，能够观察 SP 下移、AX 入栈以及返回地址；继续经过 `pop` / `ret` 后观察恢复过程。已有项目不会被自动替换。
-
-### 二阶段与保护模式示例
-
-1. 在空目录执行 **QEMU Assembly: 创建二阶段保护模式项目**。`boot.asm` 是 BIOS 装入的 512 字节引导扇区，`stage2.asm` 是加载到 `0x8000` 的 1024 字节二阶段程序。
-2. 打开两个文件，在 `boot.asm` 的读盘指令附近，以及 `stage2.asm` 的 `mov cr0, eax`、远跳转和 `protected_entry` 后的指令设置断点。开始调试后，F5 可从引导文件继续到二阶段文件。
-3. 在 `mov cr0, eax` 处用 F11 观察 `CR0.PE` 置位。此时 CS 的默认指令宽度仍是 16 位；执行 `jmp 0x08:protected_entry` 后才进入 32 位代码。继续经过 `mov ss, ax` 和 `mov esp, 0x90000`，观察段寄存器与栈的变化。
-4. 在 `learning_breakpoint` 标签后的 `nop` 指令打断点。此时 EAX/EBX 应为 `0x11223344`，可观察两个 EBP 栈帧、32 位返回地址和传入的参数；用跳出返回上一层，用重启重新从 BIOS 引导。
-5. 右侧真实 VGA 显示器和串口日志会输出 `PROTECTED_MODE_OK`。示例直接写入 `0xb8000` 文本显存，进入保护模式后不再依赖 BIOS 显示中断。
-
-示例提供最小 GDT、32 位平坦代码/数据段，以及供观察的最小 IDT，保持 IF=0、关闭分页。IDT 只有向量 3 的门和 `iretd` 处理器，不主动触发中断，也未覆盖全部异常。它不是完整内核模板。已有项目不会被自动替换，体验新增学习数据时请在空目录创建新示例。
-
-![真实 VS Code 中的保护模式断点、32 位寄存器、栈与右侧 QEMU 显示器](docs/images/protected-live.png)
-
-### 内存与描述符表
-
-调试暂停后执行 **QEMU Assembly: 查看内存与描述符表**，打开底部“QEMU 调试观察器”；调试工具栏也有入口。它与右侧模拟显示器可以同时使用。
-
-- **内存**：输入 `0x` 开头的十六进制地址或十进制地址，每页查看 256 字节、ASCII 和变化高亮。可切换虚拟/物理地址空间；虚拟模式可跟随 `SS:ESP / SP` 或 `SS:EBP / BP`，单步时按 SS 缓存的指针宽度和基址跟随实际栈地址。物理模式使用固定地址，变化高亮按地址空间与分页上下文隔离。
-- **GDT**：查看 GDTR 基址、界限、段类型、基址、有效界限、P/DPL、位宽和 G，并识别 LDT/TSS、调用门与任务门。当前使用该项的 CS/DS/SS 等段选择子会显示标记；缓存与当前表项不同会提示。悬停行可查看原始字节，表格每页 64 项。
-- **IDT**：实模式显示 IVT 的段值、偏移和入口地址；保护模式解码 16/32 位中断门、陷阱门和任务门，显示目标选择子、偏移、存在位和权限。读取受表界限限制。
-
-在新示例的 `learning_breakpoint` 后 `nop` 处断下，将寄存器 EDI 的十六进制数值复制到内存地址框，可以看到 `44 33 22 11 88 77 66 55 00 00 00 00`。单步经过 `inc dword [inspection_data+8]`，观察最后一个双字的低字节从 `00` 变为 `01` 并高亮。再从 GDT 页复制实际表基址到内存页，对照段描述符的原始字节；从 IDT 页观察执行 `lidt` 后的向量 3。完整步骤见[学习指南](docs/INSPECTION_VALIDATION.md#学习流程)。
-
-视图只读，要求可信工作区和当前 QEMU 调试会话暂停。继续时保留明确标注的“上次快照”，停止读取并禁用导航；再次暂停后刷新。重启、终止或切换调试会话会清空数据和变化基线。隐藏视图不主动读取，不保存客体内存到工作区。
-
-![真实 VS Code 中单步后的内存变化高亮与 QEMU 显示器](docs/images/inspection-memory.png)
-
-GDT、IDT 的实际界面及截图复现方式见[本轮验证](docs/INSPECTION_VALIDATION.md#真实界面)。
-
-需要保存启动配置时，可手动把以下内容添加到已有 `.vscode/launch.json` 的 `configurations` 数组。插件不会覆盖该文件：
-
-```json
-{
-  "type": "qemu-asm",
-  "request": "launch",
-  "name": "操作系统学习：16/32 位引导调试",
-  "stopOnEntry": true
-}
-```
-
-NASM 调试直接使用 QEMU 内置的 GDB Remote Serial Protocol，自动分配仅监听 `127.0.0.1` 的临时端口；**NASM 后端不需要额外安装 GDB 或其他调试插件**。配置 `debug.elf` 时改用下述 GDB C 源码后端。启动、失败、重启及停止会清理本会话创建的进程、连接与临时 listing。
-
-### 反汇编与数据断点
-
-暂停后执行 **QEMU Assembly: 查看反汇编**。底部“反汇编”页签默认跟随当前指令，显示地址、机器码、NASM 风格指令与 PC 高亮；可输入线性地址跳转、翻到后 64 条，并点击行首圆点添加地址断点。没有源码映射的代码也能按指令调试，F10 可跳过 CALL。支持 VS Code 原生反汇编与指令断点；解码器随插件分发，无需额外工具。
-
-执行 **QEMU Assembly: 查看数据断点**，输入线性地址，选择 1、2 或 4 字节和写入、读取或读写，再添加并继续运行。匹配内存访问后暂停，面板显示监视地址、访问类型及暂停 PC；访问指令已经完成，因此 PC 指向后续指令。最多设置 16 个不同的数据断点，支持 VS Code 原生数据断点及栈内存变量的访问断点。
-
-NASM 后端的写断点按写访问暂停。C/GDB 后端的写断点沿用 GDB 的值变化语义：写入相同值不会暂停；面板和原生断点提示会说明这一点。C 后端的读、读写断点按访问暂停。
-
-面板和 VS Code 原生断点分别管理：列表标明来源，删除面板断点不会删除原生界面仍持有的配置。读取和修改要求可信工作区且 CPU 暂停；运行时只保留标注的旧快照。重启同一调试会话保留断点配置，清空旧快照和命中状态；结束会话释放监视点。
-
-反汇编使用当前 CS 的基址、界限和 16/32 位模式；手动地址应指向指令起点，不确定的前驱边界、无效编码和不可读字节会明确标记。数据断点的命中类型来自 QEMU 报告；读写监视点不区分本次访问究竟读还是写，相同起点/类型而长度不同的配置可能返回多个候选命中项。完整边界与实际证据见[本轮验证](docs/MACHINE_DEBUG_VALIDATION.md)。
-
-![实际无源码映射代码的反汇编、指令地址断点与当前 PC](docs/images/machine-disassembly.png)
-
-### 分页与地址转换
-
-支持开启 CR0.PG 后的普通 32 位非 PAE 分页调试：反汇编、指令单步、F10 跳过 CALL、指令地址断点与读/写数据断点继续使用虚拟线性地址。
-
-暂停后执行 **QEMU Assembly: 查看分页与地址转换**，在“页表”页签输入虚拟线性地址，查看 CR3 → 页目录项 → 页表项 → 物理地址，以及原始表项、4 KiB / 4 MiB 页大小、P/RW/US 与 CR0.WP 对页级权限的影响。页目录和页表直接从物理内存读取，不要求客体把它们映射到虚拟地址空间。缺页、无效表项或超出支持范围时不生成物理地址。
-
-内存页的“地址空间”可切换虚拟/物理内存，便于对照同一数值地址的不同内容。物理读取要求 QEMU 支持 `qqemu.PhyMemMode` 扩展；不支持时明确提示。页表是内存快照，不读取 TLB；页级权限解释不代替段权限、CPL 或其他保护检查。NASM 源码只在原加载地址通过恒等映射验证时显示，重定位/别名代码使用地址断点与反汇编。完整语义和实际证据见[分页验证](docs/PAGING_VALIDATION.md)。
-
-## 调试保护模式中的 C 内核
-
-项目的构建命令生成可引导 raw 软盘镜像及带 DWARF 的 ELF32；客体加载器负责将内核装入 ELF 链接时指定的虚拟地址。插件启动 QEMU 和 GDB，读取符号信息，随后由 BIOS 引导到 C 入口；不会用 GDB `load` 代替加载器。推荐调试构建使用 `-m32 -ffreestanding -fno-pie -fno-pic -O0 -g -fno-omit-frame-pointer`，链接为小端 i386 `ET_EXEC`。编译、链接和引导布局仍由项目维护。
-
-在 `qemu-asm.json` 配置 `build` 和 `debug.elf` 后，打开 `.c` 文件设置行断点，再执行 **QEMU Assembly: 开始引导调试**。`stopOnEntry: true` 会停在 `debug.entry`，未配置时使用 ELF 文件入口。F10、F11、Shift+F11 分别按 C 源码跳过、进入和跳出；原生反汇编也支持按指令单步。
-
-C 行断点由 DWARF 解析，可能移到附近的可执行行，界面返回实际绑定行；条件、命中次数与日志断点暂不支持。
-
-“调用堆栈”由 GDB 根据符号和展开信息提供；选择某一帧后查看其“局部变量”和“参数”，可展开结构体、数组与指针。寄存器、原始栈和 CPU 模式仅在当前帧显示。监视和悬停支持只读表达式，如 `sample.left`、`values[1]`、`*cursor`、`cursor[2]`、`$eax` 及基本算术；拒绝赋值、递增和函数调用，暂不支持类型转换等完整 C 表达式。继续、再次暂停或重启后旧变量句柄失效，不显示为新帧的数据。
-
-C 后端继续使用反汇编、地址/数据断点、虚拟/物理内存、页表、GDT/IDT 和右侧显示器。源文件在另一目录构建时，可用 `debug.sourceMap` 映射到本地目录。数据断点仍绑定具体地址和 1/2/4 字节范围；局部变量离开作用域后不会自动跟踪新的栈地址。
-
-需要额外安装支持 i386 的 GNU GDB，并通过 `qemuAsm.gdbPath` 或项目 `debug.gdbPath` 指定。本轮实际使用 GCC 14.2 和 GDB 16.3；DWARF 由所选 GDB 解释。ELF64、PIE/ET_DYN、未链接目标文件及缺少调试节的 ELF 会被拒绝。优化后的变量可能被移除，源码行和栈展开也取决于实际 DWARF；不保证每个 C 行都有独立指令。具体接入方式、验证与限制见[C 源码调试记录](docs/C_SOURCE_VALIDATION.md)。
-
-### NASM 映射与通用模式范围
-
-- 单 CPU、NASM `-f bin` 平坦二进制。引导文件要求显式 `BITS 16` 和唯一的 `ORG 0x7c00`；每个加载阶段独立编译，`ORG` 必须等于配置的 `loadAddress`，阶段可显式从 `BITS 16` 或 `BITS 32` 开始。同一文件可用 `BITS 16` / `BITS 32` 切换指令编码，源码位置还会校验实际 CPU 模式。
-- 从真实 NASM listing 建立每个文件的指令地址，支持跨加载阶段的源码断点。宏、include、incbin、section 和条件预处理不支持调试映射；不可靠的映射会明确报错。调试中修改源码后须重启，重新构建映射。
-- 源码断点只接受指令行；标签、数据、注释、条件断点与日志断点不支持，不会自动挪到其他行。BIOS、复制到未配置地址的代码及其他未知代码不显示为已知源码，可在当前 CS 范围内反汇编、单步或设置地址断点。指令/数据断点暂不支持条件、命中次数或日志。
-- 支持标准 16 位实模式、设置 PE 后远跳转前的 16 位过渡状态，以及非 PAE 的 32 位保护模式分页调试。支持 4 KiB 页与 CR4.PSE 开启时的 4 MiB 页，物理地址限于 32 位。默认指令宽度取 CS 缓存，栈指针宽度取 SS 缓存；保护模式使用完整 EIP，支持超出 64 KiB 的指令地址，32 位 ESP 不截断为 16 位。
-- 调用者支持 16 位 near CALL 的标准 BP 链和 32 位 near CALL 的标准 EBP 链，检查返回地址与 CALL 指令边界。任意手写汇编、无 BP/EBP 栈帧、混用操作数宽度或 far CALL 不保证能还原调用栈；此时仍可查看原始栈内存。跳出需要可验证的调用者。
-- 寄存器、标志位、栈、内存与描述符表均为只读；历史调用者没有寄存器快照，须选择当前栈帧查看。NASM 调用栈使用上述 BP/EBP 链，C 调用栈使用 GDB/DWARF。描述符表每次最多读取 128 项；LDT 表和完整中断调试尚未提供。
-- PAE 分页、虚拟 8086、SMM、unreal mode 和 64 位模式不支持；检测到这些 CPU 状态时明确结束调试，避免错误解释地址。页表查看器对 PSE-36 高物理地址明确报告不支持。远程 attach、C++、多 CPU 与完整内核调试仍待后续扩展。
-
-## 右侧模拟显示器
-
-“构建并运行”或“开始引导调试”会自动在源码旁边打开 **QEMU 模拟显示器**。也可执行 **QEMU Assembly: 显示模拟显示器** 随时打开。
-
-- 显示实际 QEMU VGA 画面，支持 BIOS 文字与图形模式，无需另开原生窗口或安装 VNC 客户端。单扇区示例同时向串口和屏幕输出 `QEMU_ASM_BOOT_OK`，二阶段示例输出 `PROTECTED_MODE_OK`；已有源码不会被覆盖。
-- 画面约每秒刷新 5 次，截图不会暂停 CPU；在源码断点处暂停后也可继续查看屏幕。
-- 可选择等比例“适应”或“1:1”，并手动刷新。停止保留最后一帧；关闭面板不停止 QEMU，重新打开恢复画面。
-- 键盘输入默认关闭。点击“开启键盘输入”后，再点击黑色屏幕使其获得焦点，才会转发普通键、方向键、功能键和常见组合键；点击其他位置可释放焦点。支持向客体发送 Ctrl+Alt+Del。
-- 当前不转发鼠标、音频或输入法组合文字。刷新频率适合引导程序与操作系统入门实验，不用于高帧率桌面串流。
-
-显示器仅通过本机会话的 QMP 控制接口读取屏幕与发送受限键码，停止、失败、重启及退出会释放连接和临时图像文件。屏幕连接失败会在面板与输出日志提示。
-
-![VS Code 右侧真实 QEMU 显示器](docs/images/display-live.png)
-
-实际截图与验证细节见 [显示器验证记录](docs/DISPLAY_VALIDATION.md)。
+看不到这些结果时，按[快速开始](docs/QUICKSTART.md)逐步核对，或查看[常见问题](docs/TROUBLESHOOTING.md)。已有 C 项目从[接入 C 内核](docs/DEBUGGING.md#调试-c-内核)开始。
 
 ## 配置
 
-设置支持按工作区文件夹配置。多工作区时，命令先让用户选择项目所属的工作区。
-
-| 设置 | 默认值 | 说明 |
-| --- | --- | --- |
-| `qemuAsm.nasmPath` | `nasm` | 可执行文件路径，不含参数或包裹路径的引号 |
-| `qemuAsm.qemuPath` | `qemu-system-i386` | 同上；Windows 可填写完整 `.exe` 路径 |
-| `qemuAsm.gdbPath` | `gdb` | C/ELF 调试使用的 GDB；NASM 后端无需此工具 |
-| `qemuAsm.displayMode` | `auto` | `auto` 创建显示器，资源初始化失败时继续无显示调试；`off` 不分配 QMP 显示资源 |
-| `qemuAsm.projectDirectory` | `.` | 包含 `qemu-asm.json` 的项目目录 |
-| `qemuAsm.qemuArgs` | `[]` | 额外 QEMU 参数，采用选项和值成对的字符串数组 |
-
-项目目录、带分隔符的相对工具路径均相对**所选工作区文件夹**解析；绝对路径原样使用，裸工具名从 PATH 查找。不展开 `~`、环境变量或 `${workspaceFolder}`。Windows 的 `C:tool.exe` 盘符相对路径会被拒绝，请使用 `C:\Tools\tool.exe` 完整路径。工具和项目路径支持空格，启动时使用参数数组，不执行 shell。
-
-`qemu-asm.json` 示例：
+项目根目录的最小 `qemu-asm.json`：
 
 ```json
 {
@@ -169,118 +64,17 @@ C 后端继续使用反汇编、地址/数据断点、虚拟/物理内存、页�
 }
 ```
 
-二阶段项目配置：
+工具设置、二阶段布局、外部构建、ELF 路径与源码映射的完整示例见[配置参考](docs/CONFIGURATION.md)。每次运行和调试均重新构建；构建失败不会运行旧镜像。日志位于 **输出 → QEMU Assembly**，NASM 错误同时出现在“问题”面板。
 
-```json
-{
-  "source": "boot.asm",
-  "image": "build/boot.img",
-  "stages": [
-    { "source": "stage2.asm", "loadAddress": 32768, "lba": 1 }
-  ]
-}
-```
+## 文档与参与开发
 
-C 项目使用自己的构建命令与 ELF：
+| 你想了解 | 从这里开始 |
+| --- | --- |
+| 单步、变量、内存、页表和显示器怎么用 | [调试指南](docs/DEBUGGING.md) |
+| 工具找不到、断点不命中、显示器无画面 | [常见问题](docs/TROUBLESHOOTING.md) |
+| 平台和工具版本到底验证过哪些 | [兼容性](docs/COMPATIBILITY.md) |
+| 模块如何划分、依赖如何注入 | [架构图](docs/ARCHITECTURE.md) · [代码结构](docs/STRUCTURE.md) |
+| 编译、测试、打包和性能回归 | [开发指南](docs/DEVELOPMENT.md) · [性能](docs/PERFORMANCE.md) |
+| 历史交付证据与录屏 | [文档索引](docs/README.md) |
 
-```json
-{
-  "image": "build/os.img",
-  "build": {
-    "command": "make",
-    "args": ["debug"],
-    "cwd": ".",
-    "timeout": 120000
-  },
-  "debug": {
-    "elf": "build/kernel.elf",
-    "gdbPath": "gdb",
-    "entry": "kernel_main",
-    "sourceMap": { "/original/build": "." }
-  }
-}
-```
-
-`build.command` 是单个可执行文件，`args` 为参数数组，不解释 shell 语法；省略 `args/cwd/timeout` 时分别使用 `[]`、项目目录和 120000 毫秒。超时可设为 100..1800000 毫秒。`cwd` 必须在项目内部，不能通过目录链接跳出。带路径的 `build.command`、项目 `debug.gdbPath`、`debug.elf` 和 `sourceMap` 替换目录相对项目根解析；设置中的 `qemuAsm.gdbPath` 仍相对所选工作区。`debug.entry` 可为函数符号或 `0x` 地址，省略时使用 ELF 入口。
-
-外部构建自行生成镜像，不能同时配置 NASM `stages`；镜像必须为项目内的普通文件，512..1474560 字节、按 512 字节对齐，首扇区末尾为 `55 aa`。固定作为 raw 软盘启动，不提供硬盘、`-kernel` 或 ISO 启动配置，也不代替项目实现 Multiboot 加载。镜像与 ELF 不能指向同一文件。构建失败、超时或取消后不会运行旧镜像；只清除镜像，不删除项目自己的 ELF 或其他构建产物。
-
-源码、各阶段源码与镜像路径相对**项目目录**解析。镜像必须在项目内部，不能覆盖任何源码或配置；删除旧产物前会检查实际文件身份，防止大小写别名或目录链接指向源码/配置。输出目录不能通过符号链接跳出项目。
-
-使用 NASM 内置构建、不设置 `stages` 时，产物仍为 512 字节、末尾为 `55 aa` 的引导扇区。配置加载阶段后，构建器独立汇编各源文件，生成 1.44 MB raw 软盘（1474560 字节）镜像：引导扇区位于 LBA 0，各阶段按 `lba` 写入并补零到 512 字节边界。加载阶段最多 8 个；所有补齐后的磁盘范围必须位于 LBA 1..17，合计最多 8704 字节，彼此不得重叠。每段补齐后的内存范围须位于 `0x8000..0x9ffff`，且彼此不重叠。
-
-`loadAddress` 描述源码的预期线性加载地址，构建器不会代替客体读盘。内置 `boot.asm` 只将配置中的首个阶段从 LBA 1 读到 `0x8000`，因此使用内置加载器时首阶段须保持这两个值。构建器向引导文件传入 `STAGE2_SECTORS` 常量，值为首阶段所需扇区数；增加其他阶段或改变位置时，需要自行修改加载器。纯 `BITS 32` 阶段还要求加载器先进入对应的 32 位保护模式，再跳转到该阶段。
-
-额外参数示例：`["-m", "32M", "-cpu", "qemu32", "-smp", "1"]`。当前仅接受 `-m`、`-cpu`、`-smp`，以维持插件对镜像、串口及前台进程生命周期的控制。固定使用 TCG、软盘只读 raw 镜像、无显示、串口 stdout、无网络，不依赖 KVM。
-
-外部工具执行与示例创建均要求 Workspace Trust；只支持文件系统工作区。停止、失败、超时和退出只清理本会话创建的进程。Linux 已实际验证构建器正常/异常退出、取消及超时后的本进程组后代清理；构建命令不应自行脱离进程组或启动长期后台服务。Windows/macOS 的原生行为尚未验证。
-
-## 依赖检查与适配
-
-**QEMU Assembly: 打开依赖与能力报告** 在只读 JSON 文档中显示基础检查和当前调试会话的独立能力记录，可自行保存或复制。基础检查不构建项目、不连接目标、不自动安装工具；会话报告只标记真实执行过的协议或功能，未检查项保持 `unknown`。
-
-工具运行在扩展宿主。远程开发时请在 WSL、容器或 SSH 宿主安装并配置工具。显式路径与 PATH 命令在检查、构建和调试中使用同一规则；含空格的路径直接填写，不加外层引号。Windows `.cmd/.bat` 构建脚本需要显式配置解释器与参数。NASM 后端无需 GDB，外部构建无需插件内置 NASM；安装 VSIX 的用户无需另装 Node/npm、Python、FFmpeg 或其他调试扩展。
-
-解码器首次使用反汇编时才加载，加载故障不会阻止环境检查或构建；NASM 无源码映射的 F10 也需要解码，失败时可使用 F11。显示器资源分配失败会记录原因并继续；QMP 连接或截图失败保留核心调试。若目标 QEMU 拒绝显示相关启动参数，可设置 `qemuAsm.displayMode: "off"` 后重启。平台和版本的实际验证范围见[依赖重构验证](docs/DEPENDENCY_VALIDATION.md)；Windows/macOS 原生组合仍待验收。
-
-## 可重复验证
-
-```sh
-npm ci
-npm run check
-npm run compile
-npm test
-npm run test:integration
-npm run test:debug
-npm run test:display
-npm run test:stage
-npm run test:protected
-npm run test:inspection
-npm run test:machine
-npm run test:paging
-npm run test:c-source
-```
-
-`npm run test:dependencies` 验证统一路径、NASM 无 GDB、外部构建无 NASM、能力按需记录及会话隔离；`QEMU_ASM_HOST_PHASES=dependencies npm run test:host` 验证命令、JSON 报告与关闭显示器。`npm run test:vsix:dependencies` 从独立安装目录验收分发包。
-
-`npm test` 覆盖配置解析、空格路径、多工作区基准、不覆盖文件、旧镜像失效、启动失败、超时、取消、符号链接边界、停止与强制终止、异常信号终止、分块 UTF-8 中文日志。额外路径测试使用 Node 的 `path.win32` 和 `path.posix` 验证 Windows 盘符、UNC、空格与中文路径；这些测试不代替原生平台执行。测试直接运行编译后的核心模块，并覆盖 NASM listing、RSP 编码、调试请求与清理竞态；真实 listing 测试需 NASM，否则单独标记跳过。显示器另有 QMP 并发/超时、图像转换及会话清理测试。
-
-集成脚本调用插件共用的项目生成、构建和进程管理代码，在含空格及逗号的临时目录中：
-
-- 实际用 NASM 构建并检查 512 字节与 `55 aa`。
-- 实际用 QEMU TCG 无界面引导，15 秒内等待串口标记。
-- 停止并确认进程结束，始终清理临时目录和进程。
-- 将源码改为错误内容，确认真实 NASM 构建失败且旧镜像不可用。
-
-`npm run test:debug` 验证 QEMU 硬件断点、指令单步、源码映射、寄存器/标志位、BP 调用栈、栈内存、暂停/重启与失败清理；运行时还验证 PE 切换、非零代码段基址、32 位栈、非 PAE 分页继续执行，以及 PAE / unreal mode 的拒绝。
-
-`npm run test:stage` 验证真实 NASM 的多阶段布局、扇区补零、二阶段错误后的旧镜像失效，并用真实 QEMU 引导二阶段保护模式示例。
-
-`npm run test:protected` 验证多文件断点、实模式到保护模式的单步过渡、32 位寄存器/EBP 调用栈、单步跳过/跳出、重启与进程清理。已执行结果及边界见[保护模式验证记录](docs/PROTECTED_VALIDATION.md)。
-
-`npm run test:display` 实际验证 QEMU 暂停启动、BIOS 文字、QMP 模拟键盘、图形模式红绿像素、运行/暂停截图及清理。宿主测试还检查显示器位于源码右侧、画面更新、关闭重开和与调试单步共存。
-
-`npm run test:inspection` 验证真实 QEMU 的内存读取、SS 基址与完整栈指针、GDTR/IDTR、GDT 选择子、IVT/IDT 门解码和读取边界。描述符解码、缓存提示与视图竞态另有单测。宿主测试的 inspection 阶段验证实际底部视图、单步刷新、变化高亮、运行时快照标记、重启/终止清空；`npm run test:inspection:ui` 另执行真实界面交互并截图。实际结果与证据见[内存与描述符表验证](docs/INSPECTION_VALIDATION.md)。
-
-`npm run test:machine` 验证真实 QEMU 的读/写/读写数据监视点、16/32 位反汇编、无源码地址断点、原生与面板断点共存、继续/单步后重复命中、重启保留配置与清理。宿主新增 machine 阶段，`npm run test:machine:ui` 实际操作地址跳转、断点增删并截图，后端 DAP 独立核对修改结果。证据见[反汇编与数据断点验证](docs/MACHINE_DEBUG_VALIDATION.md)。
-
-`npm run test:paging` 验证真实 QEMU 的物理读取/恢复、非恒等代码与栈、分页后的地址断点/F10/数据断点、4 KiB / 4 MiB 页表转换、权限、缺页、跨页读取和非恒等 GDT。`npm run test:c-machine` 另外调用外部 GCC 与 GNU binutils，验证实际 C 机器码的机器级调试；目前该专项在 Linux 执行。测试固件只在临时目录生成，不增加用户模板。证据与工具变量见[分页验证](docs/PAGING_VALIDATION.md)。
-
-`npm run test:c-source` 使用真实 GCC、ELF/DWARF、GDB 与 QEMU，验证 C 行断点、源码与指令单步、局部结构体/数组/指针、帧选择、数据断点、分页和生命周期。`npm run test:c-source:ui` 另在真实 VS Code 中操作并截图。需要支持 i386 的 GCC、GNU binutils、GDB、NASM 和 QEMU，可用 `GDB_PATH` 指定测试 GDB。详细证据见[C 源码调试记录](docs/C_SOURCE_VALIDATION.md)。
-
-安装 VSIX 后，可将 `QEMU_ASM_VSIX_EXTENSION` 指向实际安装的扩展目录，再运行 `npm run test:vsix:machine`。该测试从安装包加载插件和 WebAssembly，实际验证两种模式的解码、源码单步、数据断点、内存结果与清理；Linux 无桌面环境时加 `xvfb-run -a`。
-
-可用 `NASM_PATH`、`QEMU_PATH` 环境变量覆盖集成脚本的工具路径。macOS 可先执行 `brew install nasm qemu`；Windows 可通过 Chocolatey 安装 `nasm qemu`，然后在插件设置中填写实际 `.exe` 路径。工具发现与停止行为需要在对应原生平台确认。
-
-真实 VS Code 宿主验证：
-
-```sh
-# Linux 先安装 xvfb，然后运行
-xvfb-run -a npm run test:host
-# Windows / macOS 已有桌面会话时运行
-npm run test:host
-```
-
-宿主脚本默认通过 `@vscode/test-electron` 下载稳定版 VS Code；可用 `VSCODE_VERSION=1.96.4` 选择最低支持版本，也可用 `VSCODE_EXECUTABLE_PATH` 指向已安装的 VS Code 可执行文件。脚本使用独立临时用户配置，验证真实宿主内的命令注册、信任限制、多工作区资源设置、真实 NASM/QEMU 构建运行停止、串口标记和错误 diagnostics，以及完整的 VS Code 调试会话（断点、单步、寄存器、堆栈、重启和清理）、真实显示器面板、二阶段保护模式调试、内存/描述符视图、反汇编/数据断点与分页。
-
-CI 矩阵覆盖 Ubuntu、macOS、Windows，以及 VS Code 1.96.4 / stable；每组安装真实 NASM/QEMU，运行核心测试、集成与宿主测试。远端结果须以实际 Actions 检查为准。当前已执行的验证、平台限制及人工交互待验收项见 [验证记录](docs/VALIDATION.md)。
+提交问题时请附插件版本、宿主系统、工具版本、复现步骤，以及 **QEMU Assembly: 打开依赖与能力报告** 的相关内容。问题入口：[GitHub Issues](https://github.com/nothingzhl/vscode-qemu-asm/issues)。

@@ -48,6 +48,7 @@ function escapeAttribute(value: string): string {
 export class DisplayPanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private panelDisposables: vscode.Disposable[] = [];
+  private framePng?: Buffer;
   private frame?: { type: 'frame'; data: string; width: number; height: number };
   private state: DisplayState = 'stopped';
   private message = '尚未启动模拟器';
@@ -86,6 +87,7 @@ export class DisplayPanel implements vscode.Disposable {
           this.post({ type: 'status', state: this.state, message: this.message });
           if (this.frame) this.post(this.frame);
         } else if (message.type === 'refresh') {
+          this.framePng = undefined; // Explicit refresh retries a failed webview decode or transfer.
           void this.runAction(this.options.onRefresh);
         } else if (message.type === 'key' && validKey(message.key) && this.state === 'connected'
           && this.options.onKey && this.pendingKeys < 32) {
@@ -108,6 +110,9 @@ export class DisplayPanel implements vscode.Disposable {
       this.setStatus('error', '显示器收到无效的 PNG 画面');
       return;
     }
+    // ScreenFrames reuses the PNG object when the guest display is unchanged.
+    if (frame.png === this.framePng) return;
+    this.framePng = frame.png;
     this.frame = { type: 'frame', data: `data:image/png;base64,${frame.png.toString('base64')}`, width: frame.width, height: frame.height };
     this.post(this.frame);
   }
@@ -115,6 +120,7 @@ export class DisplayPanel implements vscode.Disposable {
   setStatus(state: DisplayState, message?: string): void {
     if (this.disposed) return;
     this.state = state;
+    if (state === 'stopped') this.framePng = undefined;
     this.message = message ?? ({ connecting: '正在连接 QEMU', connected: '正在显示 QEMU 画面', error: '显示器连接失败', stopped: '模拟器已停止，保留最后画面' }[state]);
     this.post({ type: 'status', state, message: this.message });
   }
@@ -144,6 +150,7 @@ export class DisplayPanel implements vscode.Disposable {
     this.releasePanelEvents();
     panel?.dispose();
     this.frame = undefined;
+    this.framePng = undefined;
   }
 }
 

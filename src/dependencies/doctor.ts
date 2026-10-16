@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Project } from '../core';
+import type { Project } from '../project/model';
 import { localHost, type HostPlatform } from '../platform/host';
 import { execute, Processes } from '../platform/processes';
 import { resolveExecutable, type ExecutableResolution } from './tools';

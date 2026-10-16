@@ -1,10 +1,10 @@
+// White-box state fixtures install ownership as well as a backend.
+function ownBackend(adapter, backend) { adapter.resources.owned = { backend }; return backend; }
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const core = require('../dist/core');
-const runtimeModule = require('../dist/debug/runtime');
 const { AssemblyDebugAdapter } = require('../dist/debug/adapter');
 const { SourceMap } = require('../dist/debug/listing');
 
@@ -35,7 +35,7 @@ function client(t, options = {}) {
         adapter.handleMessage({ seq, type: 'request', command, arguments: args });
       });
     },
-    async settled() { await turn(); await adapter.queue; }
+    async settled() { await turn(); await adapter.channel.queue; }
   };
 }
 
@@ -74,12 +74,14 @@ async function configured(t) {
   const runtime = new ControlledRuntime();
   // Only the process/build boundaries are replaced; prepare(), listener setup,
   // source-map parsing, DAP requests and the adapter's queue execute unchanged.
-  t.mock.method(core, 'build', async (_project, _processes, _log, _cancelled, listingPath) => {
-    await fs.writeFile(listingPath, listing);
-    return { units: [{ source: fixture, loadAddress: 0x7c00, lba: 0, size: 512, listingPath }], imageBytes: 512 };
+  const c = client(t, {
+    getProject: async () => ({ source: fixture }),
+    runtimeFactory: () => runtime,
+    buildProject: async (_project, _processes, _log, _cancelled, listingPath) => {
+      await fs.writeFile(listingPath, listing);
+      return { units: [{ source: fixture, loadAddress: 0x7c00, lba: 0, size: 512, listingPath }], imageBytes: 512 };
+    },
   });
-  t.mock.method(runtimeModule, 'DebugRuntime', function () { return runtime; });
-  const c = client(t, { getProject: async () => ({ source: fixture }) });
   assert.equal((await c.request('launch')).success, true);
   assert.equal((await c.request('configurationDone')).success, true);
   runtime.stop({ reason: 'breakpoint', signal: 5 });
@@ -93,7 +95,7 @@ test('concurrent finish/dispose callers all wait for the same owned-runtime clea
   const gate = deferred();
   let cleaned = false;
   let disposals = 0;
-  c.adapter.runtime = { dispose: async () => { disposals++; await gate.promise; cleaned = true; } };
+  ownBackend(c.adapter, { dispose: async () => { disposals++; await gate.promise; cleaned = true; } });
   c.adapter.phase = 'stopped';
   const finishing = c.adapter.finish();
   let returned = false;
@@ -115,7 +117,7 @@ test('restart during termination waits for cleanup and cannot create a new sessi
   let reads = 0;
   const c = client(t, { getProject: async () => { reads++; throw new Error('must not relaunch'); } });
   const gate = deferred();
-  c.adapter.runtime = { dispose: () => gate.promise };
+  ownBackend(c.adapter, { dispose: () => gate.promise });
   c.adapter.phase = 'stopped';
   const finishing = c.adapter.finish();
   let response;
@@ -139,7 +141,7 @@ test('a natural stop ahead of a queued breakpoint update stays stopped until the
   const resumed = c.runtime.resumes;
   const baseline = c.messages.length;
   const gate = deferred();
-  c.adapter.queue = gate.promise;
+  c.adapter.channel.queue = gate.promise;
   const updating = c.request('setBreakpoints', { source: { path: c.fixture }, breakpoints: [{ line: 4 }] });
   c.runtime.stop({ reason: 'breakpoint', signal: 5 });
   // The physical stop must become visible before the queued request executes.
@@ -231,12 +233,12 @@ test('BP candidates inside an instruction, after a non-CALL or with an invalid s
   ]) {
     const c = client(t);
     c.adapter.phase = 'stopped';
-    c.adapter.map = new SourceMap('boot.asm', 0x7c00, [
+    c.adapter.sources.map = new SourceMap('boot.asm', 0x7c00, [
       { line: 3, address: 0x7c00, size: 3, text: 'call worker' },
       { line: 4, address: 0x7c03, size: 2, text: 'mov ax, bx' },
       { line: 8, address: 0x7c20, size: 1, text: 'ret' }
     ]);
-    const runtime = c.adapter.runtime = stackRuntime(candidate.address, candidate.previous, candidate.opcode);
+    const runtime = ownBackend(c.adapter, stackRuntime(candidate.address, candidate.previous, candidate.opcode));
     const trace = await c.request('stackTrace');
     assert.equal(trace.success, true);
     assert.equal(trace.body.stackFrames.length, 1, JSON.stringify(candidate));
@@ -251,12 +253,12 @@ test('BP candidates inside an instruction, after a non-CALL or with an invalid s
 test('a valid 16-bit near-CALL BP chain allows stepOut to its exact return instruction', async t => {
   const c = client(t);
   c.adapter.phase = 'stopped';
-  c.adapter.map = new SourceMap('boot.asm', 0x7c00, [
+  c.adapter.sources.map = new SourceMap('boot.asm', 0x7c00, [
     { line: 3, address: 0x7c00, size: 3, text: 'call worker' },
     { line: 4, address: 0x7c03, size: 1, text: 'nop' },
     { line: 8, address: 0x7c20, size: 1, text: 'ret' }
   ]);
-  const runtime = c.adapter.runtime = stackRuntime(0x7c03, 0, [0xe8, 0]);
+  const runtime = ownBackend(c.adapter, stackRuntime(0x7c03, 0, [0xe8, 0]));
   const trace = await c.request('stackTrace');
   assert.equal(trace.body.stackFrames.length, 2);
   assert.equal(trace.body.stackFrames[1].instructionPointerReference, '0x7C03');
