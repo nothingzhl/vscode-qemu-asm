@@ -1,5 +1,7 @@
 # 质量、兼容性与性能验收
 
+> 历史阶段记录：以下结果对应 2026-10-15 的提交与执行环境，不是当前工作区的验收结果。当前使用入口见[文档导航](README.md)，工具组合见[兼容性](COMPATIBILITY.md)。
+
 执行日期：2026-10-15；分支：`refactor/capability-architecture`。本轮基于 `acb05af`，生产修复提交为 `9aa2bcf`，CI 与指南提交为 `d926281`。没有发布 Marketplace。
 
 ## 完成的工作
@@ -8,7 +10,7 @@
 - 修复运行/调试停止期间晚到资源的清理、并发释放、工厂重入与清理错误传播。两条 DAP 路径清理失败仍发送一次 `terminated`，自然退出没有未处理拒绝；构建器也会被释放。
 - C 变量与调用栈使用代际校验、并发查询去重和有界分页缓存，释放过期根变量对象。增加取消、失败、并发、容量与旧句柄回归。
 - 静止画面复用一个 PNG 与摘要，跳过重复 Webview 传输；显式刷新及重新打开仍重发。观察器历史淘汰复用迭代器，仍限制为 4,096 字节。
-- README 收敛为安装、第一次成功调试与文档入口。配置、调试、排错、开发、兼容、性能各有指南，历史报告保留并明确标记。参考项目见[文档导航](README.md#这次文档整理参考了什么)。
+- README 收敛为安装、第一次成功调试与文档入口。配置、调试、排错、开发、兼容、性能各有指南，历史报告保留并明确标记。当时参考了 [VS Code Go](https://github.com/golang/vscode-go/blob/master/README.md)、[Microsoft C/C++](https://github.com/microsoft/vscode-cpptools/blob/main/README.md) 和 [VSCodeVim](https://github.com/VSCodeVim/Vim/blob/master/README.md) 的文档组织方式；当前入口见[文档导航](README.md)。
 
 ## 本次实际执行
 

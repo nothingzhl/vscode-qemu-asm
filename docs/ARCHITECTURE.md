@@ -64,7 +64,7 @@ flowchart TD
 
 `ports` 和 `domain` 不导入具体后端或 VS Code API；`application` 和 DAP 功能不导入具体后端或兼容入口。NASM listing、RSP 编码和 MI 转换分别归属 `backends/nasm`、`backends/rsp`、`backends/gdb`。边界测试检查这些方向，防止后续功能绕过接口拼接原始工具命令。
 
-`project` 管理配置、构建、诊断和安全创建。QEMU 参数生成留在 `backends/qemu/arguments.ts`，没有混入项目通用逻辑。显示控制和观察器仍保留在 `display`、`inspector`，由 VS Code 集成入口连接；VS Code 观察器注册、示例创建及构建诊断分别由 `integration/vscode` 的功能模块负责。`inspector/model.ts` 管理刷新状态；`snapshots.ts` 读取与提交快照；`validation.ts` 校验响应，`types.ts` 定义视图数据。只有确认响应属于当前暂停后才更新内存差异历史。
+`project` 管理配置、构建、诊断和安全创建。 `project/model.ts` 分离构建方式、`boot` 引导介质和 `debug` 符号配置；`project/artifact.ts` 执行外部构建或复用已有产物，并校验文件归属，`project/iso.ts` 校验 ISO9660 / BIOS El Torito 元数据。QEMU 参数生成留在 `backends/qemu/arguments.ts`，没有混入项目通用逻辑。显示控制和观察器仍保留在 `display`、`inspector`，由 VS Code 集成入口连接；VS Code 观察器注册、示例创建及构建诊断分别由 `integration/vscode` 的功能模块负责。`inspector/model.ts` 管理刷新状态；`snapshots.ts` 读取与提交快照；`validation.ts` 校验响应，`types.ts` 定义视图数据。只有确认响应属于当前暂停后才更新内存差异历史。
 
 `application/source/values.ts` 拥有 C 栈帧和变量句柄；[machineValues.ts](../src/application/source/machineValues.ts)单独读取当前 CPU 的寄存器、模式和原始栈，避免把这些状态解释成历史调用帧的数据。[display/frames.ts](../src/display/frames.ts)负责有界图像校验、PNG 编码和单帧复用，不承担 QMP 连接或面板生命周期。
 
@@ -85,7 +85,7 @@ flowchart TD
 | 运行客体 | `VirtualMachine` | QEMU 实现拥有进程、启动参数和调试端点 |
 | C 栈、变量、断点 | `SourceStackReader`、`SourceVariableReader`、`SourceBreakpointCommands` | GDB Adapter 将 MI 转换成帧、变量、绑定和停止事件 |
 | 反汇编 | `InstructionDecoder` + 读取能力 | iced 实现延迟加载 WASM；业务流程不引用库对象 |
-| 构建 | `ProjectBuilder` | ManagedProjectBuilder 拥有自己的 Processes |
+| 构建与产物准备 | `ProjectBuilder` | ManagedProjectBuilder 拥有 Processes；内置 NASM 管理自身输出，外部/已有镜像由项目拥有 |
 | 汇编源码映射 | `AssemblySourceLoader` | 组装入口选择 NASM 实现；临时 listing 的构建、解析和删除都在实现内完成 |
 | 会话画面 | `DebugDisplay` | 会话只连接和释放；QEMU 附加参数只在组装边界出现 |
 
@@ -96,7 +96,7 @@ flowchart TD
 ## 两条调试路径
 
 - NASM：构建 listing → SourceMaps → RSP 后端 → QEMU。源码位置要验证客体中的真实字节与分页映射；调用者来自可验证的 BP/EBP 链。
-- C：构建 ELF/DWARF → GdbSourceAdapter → GDB/MI 后端 → QEMU。调用栈由 GDB 展开，变量由 varobj 管理；源码步进与指令步进保留区别。
+- C：构建或验证已有镜像及 ELF/DWARF → GdbSourceAdapter → GDB/MI 后端 → QEMU。调用栈由 GDB 展开，变量由 varobj 管理；源码步进与指令步进保留区别。
 
 C 上层不再调用 `mi(command)`，也不解析 `MiTuple`。入口数值到 `*address` 的转换、ELF 默认入口、硬件断点与监视点命令、变量列表和 MI 停止原因都在 GDB 实现侧转换。私有 `GdbConnection` 仅用于后端内组合与兼容测试入口。
 
@@ -112,7 +112,7 @@ sequenceDiagram
     participant VM as VirtualMachine
     participant Backend as 调试后端
     Host->>Session: 启动（检查 Trust，记录 epoch）
-    Session->>Session: 构建 / 读取映射
+    Session->>Session: 构建或验证已有产物 / 读取映射
     Session->>Factory: 分配会话资源
     Factory-->>Session: backend + 可选 display
     Session->>Backend: launch
@@ -135,6 +135,7 @@ sequenceDiagram
 - `releaseAll` 等待所有清理动作完成后再报告首个错误，避免一个资源释放失败导致调用方提前返回、另一资源还在清理。DAP 会话无论自然退出、显式停止还是失败，都在清理完成后通过 `finally` 发出 `terminated`；释放后端出错仍会尝试释放构建器。
 - `RunSession` 独立拥有无需调试的 VM 和显示资源。停止等待尚未结束的资源分配；退出、失败与显式停止共用一次清理；并发停止等待同一结果，晚到资源的清理失败向启动和停止双方传播，正常取消与工厂失败分别处理。
 - `QemuVirtualMachine` 单次启动；`Processes` / MI client 负责自己的在途启动和进程树。GDB 后端取消启动后等待已创建的 GDB 清理。
+- 外部构建失败、超时或取消直接拒绝本次启动，不删除工程拥有的镜像或 ELF；`build: false` 仅验证已有文件，不判断新鲜度。QEMU 只读打开所选软盘/ISO，固件与客体引导器负责加载内核；符号后端不执行 GDB `load`。
 - 能力事实绑定会话、宿主、工具和机器配置。unknown、supported、unsupported 及证据范围保留；可选解码/显示失败不伪造成核心后端通过。
 
 ## 文件粒度与 review 顺序

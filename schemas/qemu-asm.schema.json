@@ -22,7 +22,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["source", "loadAddress", "lba"],
+        "required": [
+          "source",
+          "loadAddress",
+          "lba"
+        ],
         "properties": {
           "source": {
             "$ref": "#/definitions/path"
@@ -41,39 +45,51 @@
       }
     },
     "build": {
-      "description": "外部构建负责生成镜像，不能同时配置非空 NASM stages。",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["command"],
-      "properties": {
-        "command": {
-          "$ref": "#/definitions/path"
+      "description": "省略时使用内置 NASM；false 使用已有产物；对象指定工程自己的构建命令。",
+      "oneOf": [
+        {
+          "const": false
         },
-        "args": {
-          "type": "array",
-          "maxItems": 256,
-          "items": {
-            "type": "string",
-            "pattern": "^[^\\u0000]*$"
-          },
-          "default": []
-        },
-        "cwd": {
-          "$ref": "#/definitions/path",
-          "default": "."
-        },
-        "timeout": {
-          "type": "integer",
-          "minimum": 100,
-          "maximum": 1800000,
-          "default": 120000
+        {
+          "description": "外部构建负责生成镜像，不能同时配置非空 NASM stages。",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/definitions/path"
+            },
+            "args": {
+              "type": "array",
+              "maxItems": 256,
+              "items": {
+                "type": "string",
+                "pattern": "^[^\\u0000]*$"
+              },
+              "default": []
+            },
+            "cwd": {
+              "$ref": "#/definitions/path",
+              "default": "."
+            },
+            "timeout": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 1800000,
+              "default": 120000
+            }
+          }
         }
-      }
+      ]
     },
     "debug": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["elf"],
+      "required": [
+        "elf"
+      ],
       "properties": {
         "elf": {
           "$ref": "#/definitions/path"
@@ -127,12 +143,31 @@
     "defaultMachineProfile": {
       "$ref": "#/definitions/profileName",
       "description": "必须引用 machineProfiles 中已有的方案；启动项指定和项目手动选择优先。"
+    },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "floppy",
+            "iso"
+          ],
+          "description": "BIOS raw 软盘或包含默认 BIOS x86 El Torito 引导项的 ISO；省略时为软盘。"
+        }
+      }
     }
   },
   "allOf": [
     {
       "if": {
-        "required": ["build"]
+        "required": [
+          "build"
+        ]
       },
       "then": {
         "properties": {
@@ -140,6 +175,30 @@
             "maxItems": 0
           }
         }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "boot"
+        ],
+        "properties": {
+          "boot": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "const": "iso"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "build"
+        ]
       }
     }
   ],

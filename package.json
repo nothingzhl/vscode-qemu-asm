@@ -51,6 +51,8 @@
     "test:performance:display": "npm run compile && node --expose-gc scripts/performance/real-display.cjs --enforce --output artifacts/performance/real-display.json",
     "test:compatibility": "npm run compile && node scripts/compatibility/runner.cjs --output artifacts/compatibility",
     "test:ci": "npm run compile && node scripts/ci/run-suite.cjs --suite full --output artifacts/integration",
+    "test:os-project": "npm run compile && node scripts/os-project-integration.cjs",
+    "test:os-project:host": "npm run compile && node scripts/os-project-host.cjs",
     "test:profiles": "npm run compile && node scripts/machine-profiles-integration.cjs",
     "test:vsix:profiles": "node scripts/vsix-machine-profiles-test.cjs",
     "test:profiles:ui": "npm run compile && node scripts/machine-profiles-ui-test.cjs"

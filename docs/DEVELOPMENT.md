@@ -40,8 +40,12 @@ npm test
 | `npm run test:paging` | 物理访问恢复、非恒等映射、页表与跨页边界 |
 | `npm run test:c-machine` | 外部 GCC 客体的机器级调试 |
 | `npm run test:c-source` | ELF/DWARF、GDB 源码步进、变量、帧与分页 |
+| `npm run test:os-project` | 固定版本 DreamOS 的原生构建/启动基线、ISO 源码调试、分页、重启与失败阻断 |
+| `npm run test:os-project:host` | 同一真实工程的 VS Code 调试接入 |
 | `npm run test:dependencies` | 统一工具解析、按需依赖、能力证据与会话隔离 |
 | `npm run test:profiles` | 实际 RAM/CPU 配置、NASM/C 启动与重启、显示资源、无效 CPU 和清理 |
+
+真实 OS 接入测试须先按[接入指南](OS_PROJECT.md)准备固定提交，并设置 `DREAMOS_SOURCE`；宿主测试另设置 `VSCODE_EXECUTABLE_PATH`，不会自动下载上游 OS。
 
 脚本在含空格/逗号的临时目录生成客体，结束后清理。支持用 `NASM_PATH`、`QEMU_PATH`、`GDB_PATH` 指定工具；C 测试另可使用 `CC`、`LD`、`OBJCOPY`、`NM`。平台和工具组合没有实际运行时不要记为通过。
 
@@ -101,7 +105,7 @@ Linux 无桌面时加 `xvfb-run -a`。测试会把输入复制到仓库外，并
 | --- | --- |
 | `npm run docs:check` | 全仓 Markdown 内部链接/标题锚点，当前指南的 JSON、命令和配置键检查 |
 | `npm run test:coverage` | 单元/契约测试及 `artifacts/coverage/` 下的 HTML、LCOV、JSON |
-| `npm run test:ci` | 一次编译后执行 15 组真实后端脚本，逐项日志及结果位于 `artifacts/integration/` |
+| `npm run test:ci` | 一次编译后执行 15 组真实后端脚本（真实 OS 工程由独立 CI 任务验收），逐项日志及结果位于 `artifacts/integration/` |
 | `npm run test:compatibility` | 用当前选择的真实工具运行版本兼容场景，结果位于 `artifacts/compatibility/` |
 | `npm run test:performance` | 显示编码、静止/变化画面、观察器耗时和保留内存 |
 | `npm run test:performance:resources` | 100 次资源生命周期及内存历史清理 |

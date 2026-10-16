@@ -24,7 +24,7 @@ export interface EnvironmentReport {
   schemaVersion: 1;
   checkedAt: string;
   host: HostPlatform['identity'];
-  project: { root: string; build: 'nasm' | 'external'; debug: 'nasm' | 'c' };
+  project: { root: string; build: 'nasm' | 'external' | 'existing'; debug: 'nasm' | 'c' };
   status: 'passed' | 'failed' | 'cancelled';
   tools: EnvironmentToolCheck[];
   launchConfiguration: QemuLaunchConfiguration;
@@ -56,9 +56,9 @@ export async function checkEnvironment(project: Project, processes: Processes, o
   const cancelled = () => !!options.signal?.aborted || !!options.cancelled?.();
   const checkedAt = new Date().toISOString();
   const requests: { id: EnvironmentToolId; requested: string; cwd: string }[] = [
-    project.build
-      ? { id: 'builder', requested: project.build.command, cwd: project.build.cwd }
-      : { id: 'nasm', requested: project.nasm, cwd: project.root },
+    ...(project.build
+      ? [{ id: 'builder' as const, requested: project.build.command, cwd: project.build.cwd }]
+      : project.buildMode === 'existing' ? [] : [{ id: 'nasm' as const, requested: project.nasm, cwd: project.root }]),
     { id: 'qemu', requested: project.qemu, cwd: project.root },
     ...(project.debug ? [{ id: 'gdb' as const, requested: project.debug.gdb, cwd: project.root }] : []),
   ];
@@ -110,7 +110,7 @@ export async function checkEnvironment(project: Project, processes: Processes, o
     schemaVersion: 1,
     checkedAt,
     host: { ...host.identity },
-    project: { root: project.root, build: project.build ? 'external' : 'nasm', debug: project.debug ? 'c' : 'nasm' },
+    project: { root: project.root, build: project.build ? 'external' : project.buildMode === 'existing' ? 'existing' : 'nasm', debug: project.debug ? 'c' : 'nasm' },
     status: cancelled() ? 'cancelled' : tools.some(tool => tool.status === 'failed') ? 'failed' : 'passed',
     tools,
     launchConfiguration,
@@ -129,7 +129,7 @@ export function formatEnvironmentReport(report: EnvironmentReport): string {
     `时间：${report.checkedAt}`,
     `扩展执行宿主：${report.host.platform} ${report.host.arch}（${report.host.release}）`,
     `项目：${report.project.root}`,
-    `构建：${report.project.build === 'external' ? '项目自定义命令' : 'NASM'}；调试：${report.project.debug === 'c' ? 'C / GDB MI' : 'NASM / RSP'}`,
+    `构建：${report.project.build === 'external' ? '项目自定义命令' : report.project.build === 'existing' ? '使用已有产物（不构建）' : 'NASM'}；调试：${report.project.debug === 'c' ? 'C / GDB MI' : 'NASM / RSP'}`,
     '检查范围：工具解析与已知版本命令；不构建用户项目、不连接调试目标。',
     formatQemuLaunchConfiguration(report.launchConfiguration),
     '',

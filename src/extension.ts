@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
     state('已停止');
   }
   async function compile(p: Project, token: number): Promise<void> {
-    state('构建中');
+    state(p.buildMode === 'existing' ? '验证产物中' : '构建中');
     await compileProject(p, runner, output, diagnostics, () => token !== generation);
   }
   function register(name: string, action: (...args: unknown[]) => Promise<unknown>, exclusive = true): void {
@@ -198,8 +198,8 @@ export function activate(context: vscode.ExtensionContext): void {
         const configured = await profiles.read(true, selected, session.configuration.machineProfile);
         trusted();
         if (token !== generation) throw new Error('调试启动已取消');
-        if (configured.build && !configured.debug)
-          throw new Error('外部构建的源码调试需要在 qemu-asm.json 中配置 debug.elf。');
+        if ((configured.build || configured.buildMode === 'existing' || configured.boot?.type === 'iso') && !configured.debug)
+          throw new Error('外部构建或已有产物的源码调试需要在 qemu-asm.json 中配置 debug.elf。');
         const adapter = createDebugAdapter(configured, {
           getProject: () => profiles.read(true, selected, session.configuration.machineProfile),
           isTrusted: () => vscode.workspace.isTrusted,

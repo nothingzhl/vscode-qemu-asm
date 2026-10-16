@@ -11,6 +11,8 @@ export async function buildSourceMaps(
   log: (text: string) => void,
   cancelled: () => boolean
 ): Promise<readonly SourceMap[]> {
+  if (project.buildMode === 'existing' || project.boot?.type === 'iso')
+    throw new Error('已有产物或 ISO 的源码调试需要配置 debug.elf；NASM listing 调试需要内置构建');
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'qemu asm debug '));
   try {
     const listing = path.join(temp, 'boot.lst');

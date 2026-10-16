@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { Processes, execute } from '../platform/processes';
 import { BuildResult, BuildUnit, Project } from './model';
+import { prepareArtifact } from './artifact';
 
 export async function build(
   project: Project,
@@ -14,7 +15,7 @@ export async function build(
     if (cancelled()) throw new Error('构建已停止');
   };
   check();
-  await fs.mkdir(path.dirname(project.image), { recursive: true });
+  if (project.buildMode !== 'existing') await fs.mkdir(path.dirname(project.image), { recursive: true });
   const [actualRoot, actualParent] = await Promise.all([
     fs.realpath(project.root),
     fs.realpath(path.dirname(project.image))
@@ -75,64 +76,10 @@ export async function build(
       throw new Error('镜像与 listing 输出不能指向同一文件');
   }
   check();
-  // Never accept an earlier artifact after a failed build. Use an exclusive temporary directory.
+  if (project.build || project.buildMode === 'existing')
+    return prepareArtifact(project, processes, log, cancelled);
+  // Only the built-in NASM builder owns and replaces its output.
   await fs.rm(project.image, { force: true });
-  if (project.build) {
-    const assertExternalImageSafe = async () => {
-      const parent = await fs.realpath(path.dirname(project.image));
-      const relative = path.relative(actualRoot, parent);
-      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-        throw new Error('镜像目录不能通过符号链接指向项目外');
-      const info = await statIfExists(project.image);
-      const protectedNow = await Promise.all(protectedPaths.map(statIfExists));
-      if (protectedNow.some((item) => sameFile(info, item)))
-        throw new Error('镜像与源码、ELF 或项目配置指向同一文件');
-    };
-    try {
-      const cwd = await fs.realpath(project.build.cwd);
-      const relative = path.relative(actualRoot, cwd);
-      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-        throw new Error('build.cwd 不能通过符号链接指向项目外');
-      check();
-      log(`执行外部构建：${project.build.command}\n`);
-      await execute(
-        processes,
-        project.build.command,
-        project.build.args,
-        cwd,
-        log,
-        project.build.timeout,
-        cancelled
-      );
-      check();
-      await assertExternalImageSafe();
-      const info = await fs.lstat(project.image);
-      if (!info.isFile()) throw new Error('外部构建必须生成普通镜像文件，不能为目录或符号链接');
-      if (info.size < 512 || info.size > 1474560 || info.size % 512 !== 0)
-        throw new Error('外部引导镜像必须为 512..1474560 字节并按 512 字节扇区对齐');
-      const image = await fs.open(project.image, 'r');
-      try {
-        const signature = Buffer.alloc(2);
-        const { bytesRead } = await image.read(signature, 0, 2, 510);
-        if (bytesRead !== 2 || signature[0] !== 0x55 || signature[1] !== 0xaa)
-          throw new Error('外部引导镜像首扇区必须以 55 aa 结尾');
-      } finally {
-        await image.close();
-      }
-      check();
-      return { units: [], imageBytes: info.size };
-    } catch (error) {
-      // A builder owns its ELF and other outputs. Only invalidate this image, and
-      // recheck aliases because a failed command may have changed its directory.
-      try {
-        await assertExternalImageSafe();
-        await fs.rm(project.image, { force: true });
-      } catch {
-        /* Preserve protected or redirected files. */
-      }
-      throw error;
-    }
-  }
   const temp = await fs.mkdtemp(path.join(path.dirname(project.image), '.qemu-asm-'));
   // Windows NASM can use ANSI argv. Keep a Unicode project root in cwd,
   // which Node passes through CreateProcessW, rather than repeating it in argv.

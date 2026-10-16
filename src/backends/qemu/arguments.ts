@@ -89,6 +89,10 @@ export function qemuArguments(
     image = host.paths.isAbsolute(relative) ? absolute : `.${host.paths.sep}${relative}`;
   }
   // QEMU keyval syntax uses doubled commas for literal filename commas.
+  image = image.replace(/,/g, ',,');
+  const media = project.boot?.type === 'iso'
+    ? ['-boot', 'd', '-drive', `file=${image},format=raw,media=cdrom,readonly=on`]
+    : ['-boot', 'a', '-drive', `file=${image},format=raw,if=floppy,readonly=on`];
   return [
     '-accel',
     'tcg',
@@ -101,10 +105,7 @@ export function qemuArguments(
     '-nic',
     'none',
     '-no-reboot',
-    '-boot',
-    'a',
-    '-drive',
-    `file=${image.replace(/,/g, ',,')},format=raw,if=floppy,readonly=on`,
+    ...media,
     ...qemuMachineArguments(project)
   ];
 }

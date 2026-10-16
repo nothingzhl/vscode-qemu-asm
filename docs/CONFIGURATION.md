@@ -1,6 +1,6 @@
 # 配置参考
 
-VS Code 设置负责工具、工作区位置及机器默认值；项目内的 `qemu-asm.json` 负责源码、镜像、构建方式与可选的启动方案。首次使用可先按[快速开始](QUICKSTART.md)生成最小项目。
+VS Code 设置负责工具、工作区位置及机器默认值；项目内的 `qemu-asm.json` 负责构建方式、引导介质、调试符号与可选的启动方案。首次使用可先按[快速开始](QUICKSTART.md)生成最小项目。
 
 ## VS Code 设置
 
@@ -123,7 +123,8 @@ CPU 型号由实际选中的 QEMU 查询并校验，工具版本间可能不同�
 
 ```json
 {
-  "image": "build/os.img",
+  "image": "build/os.iso",
+  "boot": { "type": "iso" },
   "build": {
     "command": "make",
     "args": ["debug"],
@@ -141,6 +142,8 @@ CPU 型号由实际选中的 QEMU 查询并校验，工具版本间可能不同�
 
 | 字段 | 规则 |
 | --- | --- |
+| `boot.type` | `floppy`（默认）或 `iso`；ISO 使用 BIOS El Torito 光盘引导 |
+| `build` | 命令对象表示构建后启动；`false` 表示直接使用已有产物；省略时保持内置 NASM 构建 |
 | `build.command` | 单个可执行文件，不解释 shell 语法；裸命令查 PATH，带路径时相对项目根解析 |
 | `build.args` | 参数数组，默认 `[]`，最多 256 项 |
 | `build.cwd` | 默认项目目录；实际目录必须在项目内，不能通过链接跳出 |
@@ -150,11 +153,34 @@ CPU 型号由实际选中的 QEMU 查询并校验，工具版本间可能不同�
 | `debug.entry` | 函数符号或 32 位 `0x` 地址；省略时使用 ELF 入口 |
 | `debug.sourceMap` | 构建时源码目录到当前目录的映射；目标目录相对项目根 |
 
-仅需外部构建并运行时，可省略 `debug`。使用外部 `build` 时不能同时配置 NASM `stages`；插件不会额外调用 NASM。
+仅需外部构建并运行时，可省略 `debug`。外部构建或已有产物模式不能同时配置 NASM `stages`，也不会额外调用 NASM。ISO 要求显式配置外部构建或 `build: false`，内置 NASM 构建只生成软盘镜像。
 
-外部镜像必须是项目内普通文件，大小为 512..1474560 字节、按 512 字节对齐，首扇区末尾为 `55 aa`；镜像不能与 ELF、配置或已声明源码指向同一文件。构建失败仅使镜像失效，不删除项目自己的 ELF 或其他产物。
+镜像必须是项目内普通文件，不能与 ELF、配置或已声明源码指向同一文件；目录不能通过符号链接跳出项目。
 
-镜像固定作为 BIOS raw 软盘启动，不提供硬盘、ISO、`-kernel` 或 Multiboot 加载功能。项目负责把代码加载到 ELF 的链接地址，插件不会执行 GDB `load`。ELF64、PIE/ET_DYN、未链接目标文件和缺失调试节的 ELF 会被拒绝。
+- `floppy`：512..1474560 字节、按 512 字节对齐，首扇区末尾为 `55 aa`。
+- `iso`：按 2048 字节对齐，包含 ISO9660 卷描述符和有效的默认 BIOS x86 El Torito 引导项；仅 UEFI 的 ISO 不支持。不再应用软盘容量和首扇区签名规则。
+
+外部构建产物由工程管理，插件不预先删除镜像、ELF 或其他产物。构建失败、超时或取消会阻止本次启动，即使磁盘上仍有旧镜像。构建成功后再检查镜像；插件不通过时间戳推断产物是否更新，构建系统负责让镜像与符号匹配。
+
+### 使用已有产物
+
+先在项目自己的环境完成构建，再明确选择：
+
+```json
+{
+  "image": "build/os.iso",
+  "boot": { "type": "iso" },
+  "build": false,
+  "debug": {
+    "elf": "build/kernel.elf",
+    "entry": "kernel_main"
+  }
+}
+```
+
+此模式的构建、运行、调试及重启都只验证并使用已有文件，不执行编译，也不要求 NASM 或构建器；修改源码后必须自行重建。只运行镜像可省略 `debug`；外部构建、已有产物和 ISO 项目若要源码调试，必须配置 `debug.elf`。
+
+项目的 BIOS 引导器（例如 ISO 内的 GRUB）负责装载内核到 ELF 链接地址，插件不实现 Multiboot 加载器，也不执行 GDB `load`。ELF64、PIE/ET_DYN、未链接目标文件和缺失调试节的 ELF 会被拒绝。硬盘、`-kernel`、UEFI 和远程 attach 尚未提供。
 
 ## 保存调试启动项
 
@@ -164,7 +190,7 @@ CPU 型号由实际选中的 QEMU 查询并校验，工具版本间可能不同�
 {
   "type": "qemu-asm",
   "request": "launch",
-  "name": "操作系统学习：16/32 位引导调试",
+  "name": "OS 开发：32 位内核调试",
   "machineProfile": "normal",
   "stopOnEntry": true
 }
@@ -178,4 +204,4 @@ NASM 默认停在 `0x7c00`；C 项目停在配置入口或 ELF 入口。设为 `
 
 外部工具执行与项目创建要求 Workspace Trust，且只支持文件系统工作区。参数按数组传递，不经 shell；Windows `.cmd/.bat` 构建脚本须显式配置解释器和参数。
 
-QEMU 固定使用 TCG、只读 raw 软盘、串口 stdout 和无网络配置，不依赖 KVM；画面通过 QMP 显示。额外参数只允许内存、CPU 类型和 CPU 数量，调试要求单 CPU。构建命令不应自行脱离进程组或启动长期后台服务。停止、失败、取消和退出只清理插件拥有的资源；原生平台执行范围见[兼容性](COMPATIBILITY.md)。
+QEMU 固定使用 TCG、串口 stdout 和无网络配置；按 `boot.type` 使用只读 raw 软盘或 ISO 光盘，不依赖 KVM；画面通过 QMP 显示。额外参数只允许内存、CPU 类型和 CPU 数量，调试要求单 CPU。构建命令不应自行脱离进程组或启动长期后台服务。停止、失败、取消和退出只清理插件拥有的资源；原生平台执行范围见[兼容性](COMPATIBILITY.md)。

@@ -1,0 +1,10 @@
+{
+  "image": "dreamos.iso",
+  "boot": { "type": "iso" },
+  "build": {
+    "command": "make",
+    "args": ["-f", "qemu-toolkit.mk", "toolkit-iso"],
+    "timeout": 120000
+  },
+  "debug": { "elf": "generated/kernel.bin", "entry": "main_loop" }
+}

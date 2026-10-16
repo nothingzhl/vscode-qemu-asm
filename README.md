@@ -1,6 +1,6 @@
 # QEMU Assembly Toolkit
 
-在 VS Code 中调试 x86 引导程序和 32 位 C 内核：设置断点、单步执行，查看寄存器、调用栈、内存和真实 QEMU 画面。
+面向操作系统开发的 VS Code 调试与机器状态诊断工具。当前支持 QEMU 上的 x86 引导程序和 32 位 C 内核：从源码断点、调用栈与变量，追踪到寄存器、内存、描述符、页表和客体画面。
 
 [快速开始](docs/QUICKSTART.md) · [配置](docs/CONFIGURATION.md) · [调试指南](docs/DEBUGGING.md) · [常见问题](docs/TROUBLESHOOTING.md) · [全部文档](docs/README.md)
 
@@ -19,7 +19,7 @@
 | 选择机器环境 | 为项目保存多套内存、CPU 型号与显示器方案，运行或调试前选择 |
 | 接入自己的项目 | `qemu-asm.json` 配置 NASM 构建或已有外部构建命令 |
 
-当前针对单 CPU、x86 16/32 位客体和 BIOS raw 软盘引导。64 位、PAE、SMP、远程 attach、完整 C++ 调试和语法补全尚未提供。NASM 映射规则、只读能力及两条后端的差异见[调试范围](docs/DEBUGGING.md#支持范围)。
+当前针对单 CPU、x86 16/32 位客体，支持 BIOS raw 软盘及 BIOS El Torito ISO 引导。64 位、PAE、SMP、远程 attach、完整 C++ 调试和语法补全尚未提供。NASM 映射规则、只读能力及两条后端的差异见[调试范围](docs/DEBUGGING.md#支持范围)。
 
 ## 安装
 
@@ -52,7 +52,7 @@ sudo apt-get install nasm qemu-system-x86
 4. 打开 `boot.asm`，执行 **QEMU Assembly: 开始引导调试**；默认停在 `0x7c00`。
 5. 按 F11 单步，在左侧“变量”看寄存器和栈；按 F5 继续，右侧显示器和输出日志应出现 `QEMU_ASM_BOOT_OK`。结束时执行 **QEMU Assembly: 停止**。
 
-看不到这些结果时，按[快速开始](docs/QUICKSTART.md)逐步核对，或查看[常见问题](docs/TROUBLESHOOTING.md)。已有 C 项目从[接入 C 内核](docs/DEBUGGING.md#调试-c-内核)开始。
+看不到这些结果时，按[快速开始](docs/QUICKSTART.md)逐步核对，或查看[常见问题](docs/TROUBLESHOOTING.md)。已有工程可从[真实 OS 工程接入](docs/OS_PROJECT.md)开始，或查看[调试 C 内核](docs/DEBUGGING.md#调试-c-内核)。
 
 ## 配置
 
@@ -65,7 +65,7 @@ sudo apt-get install nasm qemu-system-x86
 }
 ```
 
-工具设置、二阶段布局、外部构建、ELF 路径与源码映射的完整示例见[配置参考](docs/CONFIGURATION.md)。每次运行和调试均重新构建；构建失败不会运行旧镜像。日志位于 **输出 → QEMU Assembly**，NASM 错误同时出现在“问题”面板。
+工具设置、二阶段布局、外部构建、ELF 路径与源码映射的完整示例见[配置参考](docs/CONFIGURATION.md)。默认在运行和调试前构建；`build: false` 明确使用已有产物。外部构建失败会阻止本次启动，工程镜像和 ELF 保留。日志位于 **输出 → QEMU Assembly**，NASM 错误同时出现在“问题”面板。
 
 同一项目需要不同机器环境时，执行 **QEMU Assembly: 配置启动方案** 编辑项目配置，再用 **QEMU Assembly: 选择启动方案** 切换。方案支持内存、CPU 型号和显示器开关，下次启动或重启生效；示例及优先级见[启动方案](docs/CONFIGURATION.md#启动方案)。
 
